@@ -1,1 +1,1 @@
-# Translate-
+Dofus reader app
