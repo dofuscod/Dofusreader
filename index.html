@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>English Reader</title>
+<title>Dofus Reader</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 :root{
@@ -104,7 +104,8 @@ input[type="file"]{display:none;}
 .dict-actions{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
 
 /* error banner */
-.err-banner{position:fixed;top:10px;left:10px;right:10px;z-index:90;background:#c0392b;color:#fff;border-radius:10px;padding:11px 15px;font-size:13px;line-height:1.4;text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.25);}
+.err-banner{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:90;background:var(--panel);color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.15);max-width:90%;}
+:11px 15px;font-size:13px;line-height:1.4;text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.25);}
 
 /* modal */
 .modal-overlay{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px;}
