@@ -43,9 +43,8 @@ textarea:focus{outline:none;border-color:var(--accent);}
 .btn:active{transform:scale(.97);}
 .btn-primary{background:var(--accent);color:#fff;flex:1;}
 .btn-secondary{background:transparent;border:1px solid var(--border);color:var(--text);}
-.btn-secondary:hover{border-color:var(--accent);}<input type="file" id="fileInput" accept=".epub,application/epub+zip,application/x-mobipocket-ebook,text/plain,text/html,.txt,.html,.htm">
-<input type="file" id="fileInput" accept="*/*">
-;}
+.btn-secondary:hover{border-color:var(--accent);}
+input[type="file"]{display:none;}
 
 /* library */
 .lib-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:20px 0 8px;}
@@ -89,7 +88,6 @@ textarea:focus{outline:none;border-color:var(--accent);}
   padding:8px 16px 12px;
   justify-content:space-between;align-items:center;
   gap:10px;
-  /* safe area для iPhone */
   padding-bottom:max(12px, env(safe-area-inset-bottom));
 }
 .float-bar.visible{display:flex;}
@@ -104,10 +102,13 @@ textarea:focus{outline:none;border-color:var(--accent);}
 /* export/import row */
 .dict-actions{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
 
-/* error banner */
-./* error banner */
-.err-banner{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:90;background:var(--panel);color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.15);max-width:90%;}
- 15px;font-size:13px;line-height:1.4;text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.25);}
+/* error banner (аккуратная серая плашка) */
+.err-banner{
+  position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:90;
+  background:var(--panel);color:var(--muted);border:1px solid var(--border);
+  border-radius:8px;padding:6px 12px;font-size:12px;text-align:center;
+  box-shadow:0 2px 8px rgba(0,0,0,.15);max-width:90%;
+}
 
 /* modal */
 .modal-overlay{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px;}
@@ -306,7 +307,6 @@ document.addEventListener("touchend", e => {
 ═══════════════════════════════════════════ */
 function saveScrollPos(){
   if (!currentId) return;
-  // находим первый .sent-block который видно на экране
   const blocks = document.querySelectorAll(".sent-block[data-si]");
   for (const b of blocks){
     const rect = b.getBoundingClientRect();
@@ -319,13 +319,11 @@ function saveScrollPos(){
 }
 function restoreScrollPos(){
   if (!currentId || pos[currentId] == null) return;
-  // небольшая задержка чтобы DOM отрисовался
   setTimeout(() => {
     const el = document.querySelector(`.sent-block[data-si="${pos[currentId]}"]`);
     if (el) el.scrollIntoView({block:"start", behavior:"instant"});
   }, 80);
 }
-// автосохранение позиции при скролле (debounce)
 let _scrollTimer = null;
 window.addEventListener("scroll", () => {
   if (!document.getElementById("v-reader").classList.contains("active")) return;
@@ -340,16 +338,23 @@ document.getElementById("fileBtn").onclick = () => document.getElementById("file
 document.getElementById("fileInput").onchange = async e => {
   const file = e.target.files[0];
   if (!file) return;
-  try {
-    const text = await readAsText(file);
+  const name = file.name.toLowerCase();
+  try{
+    let text;
+    if (name.endsWith(".epub"))           text = await readEpub(file);
+    else if (name.endsWith(".html")||name.endsWith(".htm")) text = htmlToText(await readAsText(file));
+    else                                  text = await readAsText(file);
     document.getElementById("inputText").value = text;
-  } catch(err){ 
-    alert("Не удалось прочитать файл: " + err.message); 
-  }
-  e.target.value = "";
+  } catch(err){ alert("Не удалось прочитать файл: "+err.message); }
+  e.target.value="";
 };
-
-
+function readAsText(file){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=ev=>res(ev.target.result);
+    r.onerror=()=>rej(new Error("FileReader error"));
+    r.readAsText(file,"UTF-8");
+  });
 }
 function readAsBinary(file){
   return new Promise((res,rej)=>{
@@ -367,299 +372,3 @@ async function readEpub(file){
   const opfPath = containerXml.match(/full-path="([^"]+\.opf)"/i)?.[1];
   if (!opfPath) throw new Error("OPF не найден в epub");
   const opfXml  = await zip.file(opfPath).async("string");
-  const opfDir  = opfPath.includes("/") ? opfPath.slice(0,opfPath.lastIndexOf("/")+1) : "";
-  const manifest={};
-  const mRe=/<item\s[^>]*id="([^"]+)"[^>]*href="([^"]+)"[^>]*>/gi; let mm;
-  while((mm=mRe.exec(opfXml))!==null) manifest[mm[1]]=mm[2];
-  const spineIds=[]; const sRe=/<itemref\s[^>]*idref="([^"]+)"/gi; let sm;
-  while((sm=sRe.exec(opfXml))!==null) spineIds.push(sm[1]);
-  const parts=[];
-  for (const id of spineIds){
-    const href=manifest[id]; if(!href) continue;
-    const fp=opfDir+href;
-    const cf=zip.file(fp)||zip.file(href); if(!cf) continue;
-    const t=htmlToText(await cf.async("string"));
-    if(t.trim()) parts.push(t.trim());
-  }
-  if(!parts.length) throw new Error("Не удалось извлечь текст из epub");
-  return parts.join("\n\n");
-}
-function htmlToText(html){
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi,"")
-    .replace(/<style[\s\S]*?<\/style>/gi,"")
-    .replace(/<br\s*\/?>/gi,"\n")
-    .replace(/<\/p>/gi,"\n")
-    .replace(/<\/div>/gi,"\n")
-    .replace(/<\/h[1-6]>/gi,"\n\n")
-    .replace(/<[^>]+>/g,"")
-    .replace(/&nbsp;/g," ").replace(/&amp;/g,"&").replace(/&lt;/g,"<")
-    .replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'")
-    .replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"')
-    .replace(/\u2014/g," — ").replace(/\u2013/g,"–")
-    .replace(/\n{3,}/g,"\n\n").trim();
-}
-  
-/* ═══════════════════════════════════════════
-   БИБЛИОТЕКА
-═══════════════════════════════════════════ */
-function renderLibrary(){
-  const el=document.getElementById("library");
-  if(!texts.length){el.innerHTML="";return;}
-  el.innerHTML=`<div class="lib-label">Мои тексты</div>`;
-  texts.slice().reverse().forEach(t=>{
-    const d=document.createElement("div");
-    d.className="lib-item";
-    const wc=t.raw.split(/\s+/).filter(Boolean).length;
-    d.innerHTML=`
-      <div style="flex:1" onclick="openText('${t.id}')">
-        <div class="lib-title">${esc(t.title)}</div>
-        <div class="lib-sub">${wc} слов · ${new Date(t.createdAt).toLocaleDateString("ru-RU")}</div>
-      </div>
-      <button class="lib-del" onclick="deleteText(event,'${t.id}')">🗑</button>`;
-    el.appendChild(d);
-  });
-}
-function deleteText(e,id){
-  e.stopPropagation();
-  showConfirm("Удалить текст без возможности восстановления?",()=>{
-    texts=texts.filter(t=>t.id!==id);
-    save.texts();
-    delete pos[id]; save.pos();
-    renderLibrary();
-  });
-}
-renderLibrary();
-
-/* ═══════════════════════════════════════════
-   СОЗДАНИЕ / ОТКРЫТИЕ ТЕКСТА
-═══════════════════════════════════════════ */
-document.getElementById("buildBtn").onclick = ()=>{
-  const raw=document.getElementById("inputText").value.trim();
-  if(!raw) return;
-  const title=raw.split(/\s+/).slice(0,6).join(" ")+"…";
-  const id="t"+Date.now();
-  texts.push({id,title,raw,createdAt:Date.now()});
-  save.texts();
-  document.getElementById("inputText").value="";
-  openText(id);
-};
-let currentId=null;
-function openText(id){
-  const t=texts.find(t=>t.id===id);
-  if(!t) return;
-  currentId=id;
-  showView("v-reader");
-  applyFont();
-  buildReader(t.raw);
-}
-document.getElementById("delBtn").onclick = ()=>{
-  showConfirm("Удалить этот текст из памяти браузера?",()=>{
-    texts=texts.filter(t=>t.id!==currentId);
-    save.texts();
-    delete pos[currentId]; save.pos();
-    renderLibrary();
-    showView("v-home");
-  });
-};
-
-/* ═══════════════════════════════════════════
-   РАЗБИВКА НА ПРЕДЛОЖЕНИЯ
-═══════════════════════════════════════════ */
-const ABBR=/\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|a\.m|p\.m|U\.S|U\.K)\./g;
-const MARK="\u0001";
-function splitSentences(text){
-  const p=text.replace(ABBR,m=>m.replace(".",MARK)).replace(/(\d)\.(\d)/g,(_,a,b)=>a+MARK+b);
-  return (p.match(/[^.!?]*[.!?]+(?:["'\u201D)\]]*)|[^.!?]+$/gs)||[])
-    .map(s=>s.replaceAll(MARK,"."))
-    .filter(s=>s.trim());
-}
-
-/* ═══════════════════════════════════════════
-   ТОКЕНИЗАЦИЯ
-═══════════════════════════════════════════ */
-function tokensEn(text){ return text.match(/[A-Za-z']+|[^A-Za-z']+/g)||[]; }
-function cleanWord(t){ return t.toLowerCase().replace(/^'+|'+$/g,""); }
-function enWords(s){ return tokensEn(s).filter(t=>/^[A-Za-z']+$/.test(t)).map(cleanWord).filter(Boolean); }
-
-/* ═══════════════════════════════════════════
-   ПЕРЕВОД (цепочка 4 сервисов + retry)
-═══════════════════════════════════════════ */
-async function fetchT(url){
-  const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout")),5000));
-  return Promise.race([fetch(url),timeout]);
-}
-async function trGoogle(t){
-  const r=await fetchT(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ru&dt=t&q=${encodeURIComponent(t)}`);
-  if(!r.ok) throw new Error("google "+r.status);
-  const d=await r.json(); return d[0].map(x=>x[0]).join("");
-}
-async function trMyMemory(t){
-  const q=t.length>480?t.slice(0,480):t;
-  const r=await fetchT(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(q)}&langpair=en|ru`);
-  if(!r.ok) throw new Error("mymemory "+r.status);
-  const d=await r.json();
-  if(!d.responseData?.translatedText) throw new Error("mymemory empty");
-  return d.responseData.translatedText;
-}
-async function trLingva(t,host){
-  const r=await fetchT(`https://${host}/api/v1/en/ru/${encodeURIComponent(t)}`);
-  if(!r.ok) throw new Error("lingva "+r.status);
-  const d=await r.json();
-  if(!d.translation) throw new Error("lingva empty");
-  return d.translation;
-}
-const TRANSLATORS=[
-  t=>trGoogle(t),
-  t=>trMyMemory(t),
-  t=>trLingva(t,"lingva.ml"),
-  t=>trLingva(t,"lingva.thedaviddelta.com"),
-];
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-let errShown=false;
-function showErr(msg){
-  if(errShown) return; errShown=true;
-  const b=document.createElement("div");
-  b.className="err-banner";
-  b.textContent=msg||"⚠️ Переводчик недоступен — попробуй обновить страницу.";
-  document.body.appendChild(b);
-  setTimeout(()=>{b.remove();errShown=false;},9000);
-}
-async function translate(text){
-  if(scache[text]!==undefined) return scache[text];
-  const trimmed=text.trim();
-  if(!trimmed||!enWords(trimmed).length){scache[text]=text;return text;}
-  for(let i=0;i<TRANSLATORS.length;i++){
-    try{
-      const ru=await TRANSLATORS[i](trimmed);
-      scache[text]=ru; save.scache(); return ru;
-    }catch(e){
-      console.warn(`Переводчик ${i+1}:`,e.message);
-      if(i<TRANSLATORS.length-1) await sleep(500);
-    }
-  }
-  showErr("⚠️ Переводчик недоступен. Обнови страницу через минуту.");
-  return text; // НЕ кешируем — попробуем снова при следующем рендере
-}
-
-/* ═══════════════════════════════════════════
-   РИДЕР
-═══════════════════════════════════════════ */
-let sentences=[];
-function buildReader(raw){
-  sentences=splitSentences(raw).map(s=>({raw:s,words:enWords(s)}));
-  renderReader();
-  hydrate().then(()=>restoreScrollPos());
-}
-function renderReader(){
-  const card=document.getElementById("readingCard");
-  let html="",total=0,knownCount=0;
-  sentences.forEach((sent,si)=>{
-    const ws=sent.words;
-    total+=ws.length;
-    const kn=ws.filter(w=>known[w]).length;
-    knownCount+=kn;
-    const full=ws.length>0&&kn===ws.length;
-    const ru=scache[sent.raw];
-    const ruLine=ru!==undefined
-      ? `<div class="ru-line">${esc(ru)}</div>`
-      : `<div class="ru-line" style="color:var(--muted);font-style:italic;font-size:13px">переводится…</div>`;
-    const enTokens=tokensEn(sent.raw);
-    let enHtml="";
-    enTokens.forEach(tok=>{
-      if(!/^[A-Za-z']+$/.test(tok)){enHtml+=esc(tok);return;}
-      const w=cleanWord(tok);
-      const isK=!!known[w];
-      enHtml+=`<span class="ew${isK?" known":""}" onclick="toggleWord('${w.replace(/'/g,"\\'")}')">${esc(tok)}</span>`;
-    });
-    html+=`<div class="sent-block${full?" fully-known":""}" data-si="${si}">${full?"":ruLine}<div class="en-line">${enHtml}</div></div>`;
-  });
-  card.innerHTML=html;
-  updateProgress(total,knownCount);
-}
-function updateProgress(total,kn){
-  const pct=total?Math.round(kn/total*100):0;
-  document.getElementById("progFill").style.width=pct+"%";
-  document.getElementById("progTxt").textContent=pct+"% слов известно";
-  document.getElementById("progCount").textContent=`${kn} / ${total}`;
-}
-async function hydrate(){
-  const todo=sentences.filter(s=>scache[s.raw]===undefined&&s.words.length>0);
-  const BATCH=5;
-  for(let i=0;i<todo.length;i+=BATCH){
-    await Promise.all(todo.slice(i,i+BATCH).map(s=>translate(s.raw)));
-    renderReader();
-  }
-}
-
-/* ═══════════════════════════════════════════
-   КЛИК ПО СЛОВУ
-═══════════════════════════════════════════ */
-function toggleWord(word){
-  if(known[word]) delete known[word]; else known[word]=true;
-  save.known();
-  renderReader();
-}
-
-/* ═══════════════════════════════════════════
-   СЛОВАРЬ — экспорт / импорт
-═══════════════════════════════════════════ */
-function renderWords(){
-  const list=Object.keys(known).sort();
-  document.getElementById("wordsCount").textContent=list.length+" слов известно";
-  const c=document.getElementById("wordsList");
-  if(!list.length){
-    c.innerHTML=`<p style="color:var(--muted);font-size:14px">Пока нет — кликай на английские слова во время чтения.</p>`;
-    return;
-  }
-  c.innerHTML=list.map(w=>
-    `<span class="word-chip">${esc(w)}<button onclick="forgetWord('${w.replace(/'/g,"\\'")}')">✕</button></span>`
-  ).join("");
-}
-function forgetWord(w){
-  delete known[w]; save.known(); renderWords();
-  if(document.getElementById("v-reader").classList.contains("active")) renderReader();
-}
-
-// Экспорт
-document.getElementById("exportBtn").onclick = ()=>{
-  const data=JSON.stringify({version:1,words:Object.keys(known)},null,2);
-  const a=document.createElement("a");
-  a.href="data:application/json;charset=utf-8,"+encodeURIComponent(data);
-  a.download="english-reader-dictionary.json";
-  a.click();
-};
-
-// Импорт
-document.getElementById("importBtn").onclick = ()=>document.getElementById("importInput").click();
-document.getElementById("importInput").onchange = async e=>{
-  const file=e.target.files[0]; if(!file) return;
-  try{
-    const text=await readAsText(file);
-    const data=JSON.parse(text);
-    const words=Array.isArray(data.words)?data.words:Object.keys(data);
-    let added=0;
-    words.forEach(w=>{ if(typeof w==="string"&&!known[w]){known[w]=true;added++;} });
-    save.known(); renderWords();
-    alert(`Добавлено ${added} новых слов. Итого: ${Object.keys(known).length}`);
-  }catch(err){ alert("Ошибка импорта: "+err.message); }
-  e.target.value="";
-};
-
-/* ═══════════════════════════════════════════
-   МОДАЛКА ПОДТВЕРЖДЕНИЯ
-═══════════════════════════════════════════ */
-function showConfirm(msg,onOk){
-  const ov=document.createElement("div");
-  ov.className="modal-overlay";
-  ov.innerHTML=`<div class="modal-box"><p>${esc(msg)}</p><div class="modal-row">
-    <button class="btn btn-secondary" style="flex:1" id="_mC">Отмена</button>
-    <button class="btn" style="flex:1;background:#c0392b;color:#fff" id="_mO">Удалить</button>
-  </div></div>`;
-  document.body.appendChild(ov);
-  ov.querySelector("#_mC").onclick=()=>ov.remove();
-  ov.querySelector("#_mO").onclick=()=>{ov.remove();onOk();};
-}
-</script>
-</body>
-</html>
