@@ -44,7 +44,8 @@ textarea:focus{outline:none;border-color:var(--accent);}
 .btn-primary{background:var(--accent);color:#fff;flex:1;}
 .btn-secondary{background:transparent;border:1px solid var(--border);color:var(--text);}
 .btn-secondary:hover{border-color:var(--accent);}
-input[type="file"]{display:none;}
+<input type="file" id="fileInput" accept=".txt,.epub,.html,.htm">
+;}
 
 /* library */
 .lib-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:20px 0 8px;}
@@ -336,26 +337,25 @@ window.addEventListener("scroll", () => {
    ЗАГРУЗКА ФАЙЛА (.txt / .epub / .html)
 ═══════════════════════════════════════════ */
 document.getElementById("fileBtn").onclick = () => document.getElementById("fileInput").click();
+document.getElementById("fileBtn").onclick = () => document.getElementById("fileInput").click();
 document.getElementById("fileInput").onchange = async e => {
   const file = e.target.files[0];
   if (!file) return;
   const name = file.name.toLowerCase();
   try{
     let text;
-    if (name.endsWith(".epub"))           text = await readEpub(file);
-    else if (name.endsWith(".html")||name.endsWith(".htm")) text = htmlToText(await readAsText(file));
-    else                                  text = await readAsText(file);
+    if (name.endsWith(".epub")) {
+      text = await readEpub(file);
+    } else {
+      text = await readAsText(file); // обычный .txt через FileReader
+    }
     document.getElementById("inputText").value = text;
-  } catch(err){ alert("Не удалось прочитать файл: "+err.message); }
-  e.target.value="";
+  } catch(err){ 
+    alert("Не удалось прочитать файл: " + err.message); 
+  }
+  e.target.value = "";
 };
-function readAsText(file){
-  return new Promise((res,rej)=>{
-    const r=new FileReader();
-    r.onload=ev=>res(ev.target.result);
-    r.onerror=()=>rej(new Error("FileReader error"));
-    r.readAsText(file,"UTF-8");
-  });
+
 }
 function readAsBinary(file){
   return new Promise((res,rej)=>{
@@ -405,7 +405,60 @@ function htmlToText(html){
     .replace(/\u2014/g," — ").replace(/\u2013/g,"–")
     .replace(/\n{3,}/g,"\n\n").trim();
 }
+/* ═══════════════════════════════════════════
+   ПАРСЕР EPUB (изолированный кусок)
+═══════════════════════════════════════════ */
+function readAsBinary(file){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=ev=>res(ev.target.result);
+    r.onerror=()=>rej(new Error("FileReader error"));
+    r.readAsArrayBuffer(file);
+  });
+}
 
+function htmlToText(html){
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi,"")
+    .replace(/<style[\s\S]*?<\/style>/gi,"")
+    .replace(/<br\s*\/?>/gi,"\n")
+    .replace(/<\/p>/gi,"\n")
+    .replace(/<\/div>/gi,"\n")
+    .replace(/<\/h[1-6]>/gi,"\n\n")
+    .replace(/<[^>]+>/g,"")
+    .replace(/&nbsp;/g," ").replace(/&amp;/g,"&").replace(/&lt;/g,"<")
+    .replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'")
+    .replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"')
+    .replace(/\u2014/g," — ").replace(/\u2013/g,"–")
+    .replace(/\n{3,}/g,"\n\n").trim();
+}
+
+async function readEpub(file){
+  if (typeof JSZip==="undefined") throw new Error("JSZip не загружен");
+  const buf = await readAsBinary(file);
+  const zip = await JSZip.loadAsync(buf);
+  const containerXml = await zip.file("META-INF/container.xml").async("string");
+  const opfPath = containerXml.match(/full-path="([^"]+\.opf)"/i)?.[1];
+  if (!opfPath) throw new Error("OPF не найден в epub");
+  const opfXml  = await zip.file(opfPath).async("string");
+  const opfDir  = opfPath.includes("/") ? opfPath.slice(0,opfPath.lastIndexOf("/")+1) : "";
+  const manifest={};
+  const mRe=/<item\s[^>]*id="([^"]+)"[^>]*href="([^"]+)"[^>]*>/gi; let mm;
+  while((mm=mRe.exec(opfXml))!==null) manifest[mm[1]]=mm[2];
+  const spineIds=[]; const sRe=/<itemref\s[^>]*idref="([^"]+)"/gi; let sm;
+  while((sm=sRe.exec(opfXml))!==null) spineIds.push(sm[1]);
+  const parts=[];
+  for (const id of spineIds){
+    const href=manifest[id]; if(!href) continue;
+    const fp=opfDir+href;
+    const cf=zip.file(fp)||zip.file(href); if(!cf) continue;
+    const t=htmlToText(await cf.async("string"));
+    if(t.trim()) parts.push(t.trim());
+  }
+  if(!parts.length) throw new Error("Не удалось извлечь текст из epub");
+  return parts.join("\n\n");
+}
+  
 /* ═══════════════════════════════════════════
    БИБЛИОТЕКА
 ═══════════════════════════════════════════ */
