@@ -383,7 +383,8 @@ async function readEpub(file){
     const href=manifest[id]; if(!href) continue;
     const fp=opfDir+href;
     const cf=zip.file(fp)||zip.file(href); if(!cf) continue;
-    const t=htmlToText(await cf.async("string"));
+    const rawHtml = await cf.async("string");
+    const t = htmlToText(rawHtml);
     if(t.trim()) parts.push(t.trim());
   }
   if(!parts.length) throw new Error("Не удалось извлечь текст из epub");
