@@ -334,6 +334,7 @@ window.addEventListener("scroll", () => {
 /* ═══════════════════════════════════════════
    ЗАГРУЗКА ФАЙЛА (.txt / .epub / .html)
 ═══════════════════════════════════════════ */
+document.getElementById("fileBtn").onclick = () => document.getElementById("fileInput").click();
 document.getElementById("fileInput").onchange = async e => {
   const file = e.target.files[0];
   if (!file) return;
@@ -349,6 +350,18 @@ document.getElementById("fileInput").onchange = async e => {
       renderLibrary();
       openText(id);
       e.target.value = "";
+      return;
+    } else if (name.endsWith(".html") || name.endsWith(".htm")) {
+      text = htmlToText(await readAsText(file));
+    } else {
+      text = await readAsText(file);
+    }
+    document.getElementById("inputText").value = text;
+  } catch(err){ 
+    alert("Не удалось прочитать файл: " + err.message); 
+  }
+  e.target.value = "";
+};
       return;
     } else if (name.endsWith(".html") || name.endsWith(".htm")) {
       text = htmlToText(await readAsText(file));
