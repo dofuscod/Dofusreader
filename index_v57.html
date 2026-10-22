@@ -1,0 +1,1718 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dofus Reader</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.93/epub.min.js"></script>
+<style>
+:root{
+  --bg:#f5f2eb; --panel:#fff; --text:#1a1a1a; --muted:#888;
+  --accent:#2a7a4b; --accent-soft:#e6f4ec; --border:#e0dbd0; --radius:14px;
+  --serif:Georgia,"Palatino Linotype",serif;
+  --known-word-color:#2a9d5b;
+}
+[data-theme="dark"]{
+  --bg:#141618; --panel:#17191b; --text:#e8e4dc; --muted:#85888b;
+  --accent:#5dba80; --accent-soft:#1a2e22; --border:#303337;
+}
+[data-theme="sepia"]{
+  --bg:#f0dfca; --panel:#f0dfca; --text:#4f3b2b; --muted:#8b7764;
+  --accent:#2a9d5b; --accent-soft:#e7d2b8; --border:#d8c5ad;
+}
+[data-theme="light"]{
+  --bg:#ffffff; --panel:#ffffff; --text:#252525; --muted:#666666;
+  --accent:#2a7a4b; --accent-soft:#e6f4ec; --border:#dedede;
+}
+[data-theme="gray"]{
+  --bg:#e0e0dd; --panel:#e0e0dd; --text:#242424; --muted:#555653;
+  --accent:#176b3a; --accent-soft:#cfd5ce; --border:#bdbdb9;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",sans-serif;transition:background .2s,color .2s;}
+.app{max-width:720px;margin:0 auto;padding:16px 16px 90px;}
+
+/* topbar */
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
+.topbar h1{font-size:17px;font-weight:700;}
+.top-actions{display:flex;gap:8px;}
+.icon-btn{width:36px;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--panel);color:var(--text);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.icon-btn:hover{border-color:var(--accent);}
+.icon-btn.danger:hover{border-color:#c0392b;color:#c0392b;}
+
+/* views */
+.view{display:none;} .view.active{display:block;}
+
+/* card */
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:16px;}
+.card+.card{margin-top:12px;}
+.card-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px;}
+
+/* input */
+textarea{width:100%;min-height:180px;padding:12px;font-size:15px;line-height:1.55;resize:vertical;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font-family:inherit;}
+textarea:focus{outline:none;border-color:var(--accent);}
+.row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;}
+.btn{border:none;border-radius:10px;padding:10px 16px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s,transform .1s;}
+.btn:active{transform:scale(.97);}
+.btn-primary{background:var(--accent);color:#fff;flex:1;}
+.btn-secondary{background:transparent;border:1px solid var(--border);color:var(--text);}
+.btn-secondary:hover{border-color:var(--accent);}
+input[type="file"]{display:none;}
+
+/* library */
+.lib-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:20px 0 8px;}
+.lib-item{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--panel);cursor:pointer;margin-top:8px;}
+.lib-item:hover{border-color:var(--accent);}
+.lib-title{font-weight:600;font-size:14px;}
+.lib-sub{font-size:12px;color:var(--muted);margin-top:2px;}
+.lib-del{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:2px 6px;}
+.lib-del:hover{color:#c0392b;}
+
+/* reader top bar */
+.reader-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+.reader-bar .left{display:flex;gap:8px;}
+.font-ctrl{display:flex;align-items:center;gap:2px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:3px;}
+.font-ctrl button{background:none;border:none;color:var(--text);width:30px;height:30px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;}
+.font-ctrl button:hover{background:var(--accent-soft);}
+
+/* progress */
+.prog-wrap{margin-bottom:12px;}
+.prog-label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:5px;}
+.prog-track{height:6px;background:var(--border);border-radius:4px;overflow:hidden;}
+.prog-fill{height:100%;background:var(--accent);border-radius:4px;transition:width .3s;}
+
+/* reading */
+.reading-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:24px 22px;--reader-font-family:var(--serif);--reader-line-height:1.6;}
+.sent-block{margin-bottom:1.3em;}
+.ru-line{font-family:var(--reader-font-family,var(--serif));font-size:var(--ru-size,22px);line-height:var(--reader-line-height,1.65);color:var(--text);margin-bottom:4px;}
+.en-line{font-family:var(--reader-font-family,var(--serif));font-size:var(--en-size,14px);line-height:var(--reader-line-height,1.6);color:var(--muted);}
+.sent-block.fully-known .ru-line{display:none;}
+.sent-block.fully-known .en-line{font-size:var(--ru-size,22px);color:var(--text);}
+.ew{cursor:pointer;border-radius:3px;padding:0 1px;transition:background .12s,color .12s;}
+.ew:hover{background:var(--accent-soft);color:var(--accent);}
+.ew.known{color:var(--known-word-color,var(--accent));font-weight:600;}
+.ew.known:hover{text-decoration:line-through;background:var(--accent-soft);}
+
+/* ── floating bottom bar (ридер) ── */
+.float-bar{
+  position:fixed;bottom:0;left:0;right:0;z-index:40;
+  display:none;
+  background:var(--panel);border-top:1px solid var(--border);
+  padding:8px 16px 12px;
+  justify-content:space-between;align-items:center;
+  gap:10px;
+  /* safe area для iPhone */
+  padding-bottom:max(12px, env(safe-area-inset-bottom));
+}
+.float-bar.visible{display:flex;}
+.float-bar .font-ctrl{border:1px solid var(--border);}
+
+/* EPUB: отдельный просмотр исходной книги без преобразования в обычный текст */
+#v-epub.active{position:fixed;inset:0;z-index:30;background:var(--bg);padding:0;max-width:none;display:flex;flex-direction:column;}
+#v-epub .epub-toolbar{flex:0 0 54px;display:flex;align-items:center;gap:8px;margin:0;padding:6px 12px;background:var(--panel);border-bottom:1px solid var(--border);}
+#v-epub .epub-toolbar #epubBack{order:0}
+#v-epub .epub-toolbar .chapter-select{order:1;flex:1;justify-content:center;font-size:15px;border-radius:10px;min-height:40px}
+#v-epub .epub-toolbar .toolbar-spacer{display:none}
+#v-epub .epub-toolbar #epubSettings{order:2}
+#v-epub .epub-toolbar #epubTheme{display:none}
+#v-epub .epub-toolbar button{flex:0 0 auto;min-width:38px;}
+#v-epub .epub-toolbar .icon-btn{border:0;background:transparent;box-shadow:none;}
+#v-epub .epub-toolbar .icon-btn:hover{background:var(--accent-soft);border:0;}
+#v-epub .epub-toolbar .chapter-title{font-size:14px;font-weight:650;white-space:nowrap;}
+#v-epub .epub-toolbar .chapter-select{display:flex;align-items:center;gap:7px;border:0;background:transparent;color:var(--text);padding:6px 2px;min-width:0;}
+#v-epub .epub-toolbar .toolbar-spacer{flex:1;}
+#epubProgress{flex:0 0 auto;padding:6px 14px 0;margin:0;}
+#epubStage{flex:1 1 auto;height:auto;min-height:0;background:var(--bg);border:0;border-radius:0;overflow:hidden;position:relative;margin:0;padding:0;}
+#epubStage.epub-whole-mode{height:auto;min-height:0;overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;}
+#v-epub .epub-nav{flex:0 0 auto;display:flex;gap:10px;margin:0;padding:8px 16px max(8px,env(safe-area-inset-bottom));background:var(--bg);border-top:0;}
+#v-epub .epub-nav .btn{flex:1;min-height:48px;border-radius:18px;border:0;background:var(--accent);color:#fff;font-weight:600;font-size:15px;box-shadow:none;}
+#v-epub .epub-nav .btn:active{transform:scale(.98)}
+[data-theme="dark"] #v-epub .epub-nav .btn{background:#28613f;color:#f0f0ec;}
+[data-theme="sepia"] #v-epub .epub-nav .btn{background:#9c7655;color:#fffaf2;}
+[data-theme="gray"] #v-epub .epub-nav .btn{background:#657d6c;color:#fff;}
+[data-theme="light"] #v-epub .epub-nav .btn{background:#3f7957;color:#fff;}
+/* Release visual-only theme refinements: preserve reading backgrounds and all app logic. */
+[data-theme="sepia"] #v-epub .epub-toolbar,
+[data-theme="sepia"] #v-epub #epubProgress,
+[data-theme="sepia"] #v-epub .epub-nav .btn { background-color:#dfc5a6; }
+[data-theme="gray"] #v-epub .epub-toolbar,
+[data-theme="gray"] #v-epub #epubProgress,
+[data-theme="gray"] #v-epub .epub-nav .btn { background-color:#c7c9c5; }
+[data-theme="light"] #v-epub .epub-toolbar,
+[data-theme="light"] #v-epub #epubProgress,
+[data-theme="light"] #v-epub .epub-nav .btn { background-color:#e7e7e3; }
+[data-theme="sepia"] #v-epub .epub-nav .btn,
+[data-theme="gray"] #v-epub .epub-nav .btn,
+[data-theme="light"] #v-epub .epub-nav .btn { color:#111; }
+#v-epub .epub-help{display:none;}
+.epub-chapter-menu{position:fixed;z-index:9999;left:16px;right:16px;top:62px;max-height:65dvh;overflow:auto;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:14px;padding:12px;box-shadow:0 8px 36px #0005;}
+.epub-chapter-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.epub-chapter-item{display:block;width:100%;text-align:left;padding:12px 10px;border:0;border-bottom:1px solid var(--border);background:transparent;color:inherit;font:inherit;}
+#epubStage iframe{background:var(--bg);}
+#epubProgress{margin:0 0 8px;}
+#epubProgress .prog-label{font-size:12px;}
+/* v33 visual-only correction: extend the progress panel and refine dark navigation buttons. */
+[data-theme="light"] #v-epub #epubProgress,
+[data-theme="gray"] #v-epub #epubProgress,
+[data-theme="sepia"] #v-epub #epubProgress {
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+}
+[data-theme="light"] #v-epub .epub-toolbar,
+[data-theme="light"] #v-epub #epubProgress { background-color: #e7e7e3; }
+[data-theme="gray"] #v-epub .epub-toolbar,
+[data-theme="gray"] #v-epub #epubProgress { background-color: #c7c9c5; }
+[data-theme="sepia"] #v-epub .epub-toolbar,
+[data-theme="sepia"] #v-epub #epubProgress { background-color: #dfc5a6; }
+[data-theme="dark"] #v-epub .epub-nav .btn { background-color: #30363a; color: #f0f0ec; }
+[data-theme="dark"] #v-epub #epubProgress .prog-track { background-color: #3a3e42; }
+
+/* words */
+.words-list{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px;}
+.word-chip{display:inline-flex;align-items:center;gap:5px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:13px;}
+.word-chip button{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;}
+.word-chip button:hover{color:#c0392b;}
+
+/* export/import row */
+.dict-actions{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+
+/* error banner */
+.err-banner{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:90;background:var(--panel);color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:13px;line-height:1.4;text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:90%;}
+
+/* modal */
+.modal-overlay{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;box-sizing:border-box;}
+.modal-box{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:20px;max-width:300px;width:100%;text-align:center;margin:auto;max-height:calc(100dvh - 40px);overflow-y:auto;}
+.modal-box p{font-size:15px;line-height:1.5;margin-bottom:16px;}
+.modal-row{display:flex;gap:10px;}
+
+.reader-settings{position:fixed;z-index:10001;inset:0;background:#0007;display:flex;align-items:flex-end;justify-content:center;padding:12px;}
+.reader-settings[hidden]{display:none;}
+.reader-settings-panel{width:min(100%,460px);max-height:78dvh;overflow:auto;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:0 8px 32px #0004;}
+.reader-settings-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+.reader-setting{margin:14px 0;}
+.reader-setting label{display:block;font-size:13px;font-weight:650;margin-bottom:8px;color:var(--muted);}
+.reader-setting select{width:100%;padding:11px;border:1px solid var(--border);border-radius:9px;background:var(--bg);color:var(--text);font:inherit;}
+.reader-colors{display:flex;gap:14px;flex-wrap:wrap;}
+.reader-themes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;}
+.reader-theme{border:0;background:transparent;color:var(--text);padding:3px;display:flex;flex-direction:column;align-items:center;gap:6px;font:inherit;font-size:11px;cursor:pointer;min-width:0;}
+.reader-theme-swatch{width:100%;height:48px;border-radius:11px;border:1px solid #0002;display:flex;align-items:center;justify-content:center;font-family:Georgia,serif;font-size:27px;line-height:1;}
+.reader-theme[aria-pressed="true"] .reader-theme-swatch{outline:2px solid var(--accent);outline-offset:2px;}
+.reader-theme:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:8px;}
+.reader-color{display:flex;flex-direction:column;align-items:center;gap:5px;border:0;background:transparent;color:var(--text);font-size:11px;}
+.reader-color i{display:block;width:28px;height:28px;border-radius:50%;border:2px solid transparent;box-shadow:0 0 0 1px var(--border);}
+.reader-color[aria-pressed="true"] i{outline:2px solid var(--text);outline-offset:3px;}
+footer{text-align:center;font-size:12px;color:var(--muted);margin-top:18px;}
+@media(max-width:480px){.reading-card{padding:18px 14px;}}
+
+/* v32: visual-only dark-theme separation; reading background and app logic unchanged. */
+[data-theme="dark"] #v-epub .epub-toolbar {
+  background-color: #202226;
+  border-bottom-color: #3b3f43;
+}
+[data-theme="dark"] #v-epub #epubProgress {
+  background-color: #202226;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #3b3f43;
+}
+[data-theme="dark"] #v-epub #epubProgress .prog-track {
+  background-color: #383c40;
+}
+[data-theme="dark"] #v-epub .epub-nav {
+  background-color: var(--bg);
+}
+[data-theme="dark"] #v-epub .epub-nav .btn {
+  background-color: #202226;
+  color: #ffffff;
+}
+
+/* v41 — визуальная полировка по ТЗ; без изменения логики приложения. */
+:root{
+  --radius:18px;
+}
+[data-theme="dark"]{
+  --bg:#1c1c1e;
+  --panel:#242629;
+  --text:#e8e4dc;
+  --muted:#96999d;
+  --border:#383b40;
+}
+[data-theme="gray"]{
+  --bg:#e3e3e1;
+  --panel:#e9e9e7;
+  --text:#242424;
+  --muted:#62625f;
+  --border:#c8c8c4;
+}
+[data-theme="sepia"]{--text:#3a322c;}
+.app{padding-left:20px;padding-right:20px;}
+textarea{padding:15px;border-radius:14px;border-color:color-mix(in srgb,var(--border) 78%,transparent);}
+.lib-item{border-radius:14px;background:var(--panel);border-color:color-mix(in srgb,var(--border) 80%,transparent);transition:border-color .18s,background .18s;}
+.lib-del{opacity:.68;transition:opacity .18s,color .18s;}
+.lib-del:hover,.lib-del:focus-visible{opacity:1;}
+.reading-card{border-radius:20px;}
+.prog-track{height:4px;border-radius:999px;background:color-mix(in srgb,var(--border) 78%,transparent);}
+.prog-fill{border-radius:999px;background:color-mix(in srgb,var(--accent) 76%,var(--muted));}
+#epubProgress .prog-label{margin-bottom:7px;}
+#v-epub .epub-toolbar{border-bottom-color:color-mix(in srgb,var(--border) 65%,transparent);}
+#v-epub .epub-nav{background:color-mix(in srgb,var(--panel) 82%,transparent);padding:8px 16px max(8px,env(safe-area-inset-bottom));}
+#v-epub .epub-nav .btn{min-height:42px;border-radius:14px;background:transparent;color:var(--text);border:1px solid color-mix(in srgb,var(--border) 85%,transparent);font-weight:550;box-shadow:none;}
+#v-epub .epub-nav .btn:active{background:var(--accent-soft);transform:scale(.99);}
+[data-theme="dark"] #v-epub .epub-nav .btn{background:transparent;color:var(--text);border-color:#41454a;}
+[data-theme="sepia"] #v-epub .epub-nav .btn{background:transparent;color:var(--text);border-color:#d1bda5;}
+[data-theme="gray"] #v-epub .epub-nav .btn{background:transparent;color:var(--text);border-color:#c4c5c1;}
+[data-theme="light"] #v-epub .epub-nav .btn{background:transparent;color:var(--text);border-color:#dededb;}
+.reader-settings{align-items:flex-end;padding:12px;background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;}
+.reader-settings-panel{border-radius:26px;padding:20px;background:var(--panel);backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:0 18px 48px rgba(0,0,0,.18);border-color:var(--border);}
+.reader-settings-head{margin-bottom:18px;}
+.reader-settings-head strong{font-size:17px;font-weight:650;letter-spacing:-.2px;}
+.reader-themes{gap:9px;}
+.reader-theme-swatch{height:46px;border-radius:13px;border:1px solid color-mix(in srgb,var(--border) 70%,transparent);font-size:25px;}
+.reader-theme[aria-pressed="true"] .reader-theme-swatch{outline:1.5px solid var(--accent);outline-offset:2px;box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 12%,transparent);}
+.reader-setting select{border-radius:12px;padding:12px;border-color:color-mix(in srgb,var(--border) 80%,transparent);}
+input[type="range"]{appearance:none;-webkit-appearance:none;width:100%;height:24px;background:transparent;cursor:pointer;}
+input[type="range"]::-webkit-slider-runnable-track{height:4px;border-radius:999px;background:var(--border);}
+input[type="range"]::-moz-range-track{height:4px;border-radius:999px;background:var(--border);}
+input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;margin-top:-7px;border-radius:50%;background:var(--panel);border:1px solid color-mix(in srgb,var(--accent) 45%,var(--border));box-shadow:0 2px 5px rgba(0,0,0,.18);}
+input[type="range"]::-moz-range-thumb{width:17px;height:17px;border-radius:50%;background:var(--panel);border:1px solid color-mix(in srgb,var(--accent) 45%,var(--border));box-shadow:0 2px 5px rgba(0,0,0,.18);}
+.btn,.icon-btn{transition:background .18s,border-color .18s,opacity .18s,transform .1s;}
+@media(max-width:480px){
+  .app{padding-left:20px;padding-right:20px;}
+  .reading-card{padding:18px 20px;border-radius:18px;}
+  .reader-settings-panel{max-height:82dvh;border-radius:26px;}
+}
+
+/* v51: mirror the EPUB toolbar and viewport for plain-text reading */
+#v-reader.active{position:fixed;inset:0;z-index:30;background:var(--bg);padding:0;max-width:none;display:flex;flex-direction:column;overflow:hidden;}
+#v-reader .text-reader-toolbar{flex:0 0 54px;width:100%;margin:0;padding:6px 20px;gap:8px;display:flex;align-items:center;background:var(--panel);border-bottom:0;box-sizing:border-box;position:relative;}
+#v-reader .text-reader-toolbar:after{content:"";position:absolute;left:20px;right:20px;bottom:0.5em;height:1px;background:color-mix(in srgb,var(--border) 65%,transparent);pointer-events:none;}
+#v-reader .text-reader-toolbar #backBtn{flex:0 0 38px;min-width:38px;border:0;background:transparent;box-shadow:none;}
+#v-reader .text-reader-toolbar #textReaderSettings{flex:0 0 38px;min-width:38px;border:0;background:transparent;box-shadow:none;}
+#v-reader .text-reader-toolbar .toolbar-spacer{display:block;flex:1 1 auto;min-width:0;}
+#v-reader .text-reader-toolbar #textReaderSettings{margin-left:auto;order:3;align-self:center;}
+#v-reader .legacy-reader-controls{display:none!important;}
+#v-reader .text-reader-progress{flex:0 0 auto;margin:0;padding:0 20px 1em;background:var(--panel);box-sizing:border-box;}
+#v-reader .text-reader-progress .prog-label{margin-bottom:3px;}
+#v-reader .text-reader-progress .prog-track{height:2px;border-radius:999px;}
+#v-reader .reading-card{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;margin:0;padding:1em 20px max(24px,env(safe-area-inset-bottom));border:0;border-radius:0;background:var(--bg);width:100%;max-width:100%;}
+#v-reader .text-reader-toolbar button:active{background:var(--accent-soft);}
+/* Match plain-text toolbar/progress colors to the EPUB theme palette. */
+[data-theme="light"] #v-reader .text-reader-toolbar,[data-theme="light"] #v-reader .text-reader-progress{background-color:#e7e7e3;}
+[data-theme="gray"] #v-reader .text-reader-toolbar,[data-theme="gray"] #v-reader .text-reader-progress{background-color:#c7c9c5;}
+[data-theme="sepia"] #v-reader .text-reader-toolbar,[data-theme="sepia"] #v-reader .text-reader-progress{background-color:#dfc5a6;}
+[data-theme="dark"] #v-reader .text-reader-toolbar,[data-theme="dark"] #v-reader .text-reader-progress{background-color:#242629;}
+
+/* v45: reader controls refinement; keep reader/import logic intact */
+.topbar h1.brand-title{display:flex;align-items:center;gap:8px}.brand-title svg{width:22px;height:22px;flex:none}
+.file-icon{width:18px;height:18px;vertical-align:middle;margin-right:6px;color:var(--text)}
+.btn-primary{background:#9ab9a3;color:#14251a;padding:14px 18px;border-radius:14px}
+.lib-label{text-align:left}
+.prog-track{height:2px;border-radius:999px}
+.err-banner{text-align:left;left:12px;right:12px;transform:none;max-width:none}
+.reader-settings-panel{width:min(100%,460px);border-radius:28px 28px 0 0;padding:20px 18px max(20px,env(safe-area-inset-bottom));}
+.reader-settings-panel:before,.epub-chapter-menu:before{touch-action:pan-y;content:"";display:block;width:40px;height:5px;border-radius:99px;background:var(--muted);opacity:.45;margin:0 auto 16px}
+.reader-settings-head{display:flex;align-items:center;justify-content:space-between;position:sticky;top:-20px;background:var(--panel);padding:4px 0 12px;z-index:2}
+.settings-head-actions{display:flex;gap:8px}
+#readerFullscreenToggle{width:34px!important;min-width:34px;height:34px;padding:0;font-size:20px;line-height:1}
+/* v46: compact settings sheet so the live text remains visible above it */
+.reader-settings-panel{max-height:68dvh;padding-top:14px;padding-bottom:max(14px,env(safe-area-inset-bottom));}
+.reader-settings-panel:before{margin-bottom:10px}
+.reader-settings-head{top:-14px;padding:2px 0 8px}
+.reader-setting{margin-bottom:12px}
+.line-range{display:flex;align-items:center;gap:12px}
+.line-range span{flex:0 0 20px;text-align:center;color:var(--muted);font-size:16px;line-height:1}
+.line-range input[type=range]{flex:1;min-width:0;width:auto!important;margin:0}
+/* Plain-text reader keeps only Back and Settings in its floating bar. */
+#floatBar .font-ctrl,#floatTheme{display:none!important}
+@media(max-width:480px){.reader-settings-panel{max-height:70dvh;padding-top:14px}.reader-setting{margin-bottom:10px}}
+.reader-theme[aria-pressed="true"] .reader-theme-swatch{outline:2px solid var(--text);outline-offset:2px;box-shadow:none}
+.reader-setting>label{display:block;margin-bottom:8px}
+.reader-setting input[type=range]{display:block}
+#epubFontSizeLabel,#epubLineHeightLabel{display:none!important}
+.reader-setting:has(#epubFontSize) .range-decor,#readerAlign{display:flex;align-items:center;gap:12px}
+.reader-setting:has(#epubFontSize) .range-decor:before{content:"A";font-size:13px;color:var(--muted)}
+.reader-setting:has(#epubFontSize) .range-decor:after{content:"A";font-size:21px;color:var(--muted)}
+.reader-align button{flex:1;border:1px solid var(--border);border-radius:10px;padding:10px;background:transparent;color:var(--text);font-size:18px}
+.reader-align button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--text)}
+.reader-colors .reader-color{border-radius:14px;gap:8px}
+.reader-color i{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;border:1px solid #0001;position:relative}
+.reader-color[aria-pressed="true"] i:after{content:"✓";font-style:normal;font-size:15px;font-weight:800;color:#172018}
+.reader-color[data-color="#2a9d5b"] i{background:#a8d5b5!important}.reader-color[data-color="#27a9e0"] i{background:#a9d7ea!important}.reader-color[data-color="#d6a500"] i{background:#f2dda0!important}.reader-color[data-color="#e56ba6"] i{background:#f0bfd5!important}.reader-color[data-color="#a78bfa"] i{background:#d1c3f5!important}
+.epub-chapter-menu{top:auto;bottom:0;left:0;right:0;max-height:78dvh;border-radius:28px 28px 0 0;border-bottom:0;padding:18px 18px max(18px,env(safe-area-inset-bottom));background:var(--panel);backdrop-filter:none;-webkit-backdrop-filter:none}
+.epub-chapter-head{position:sticky;top:0;background:var(--panel);padding:2px 0 12px;z-index:1}
+.epub-chapter-item{border-bottom:0;position:relative;padding:13px 12px;border-radius:10px;text-align:left}
+.epub-chapter-item+.epub-chapter-item:before{content:"";position:absolute;left:12px;right:12px;top:0;height:1px;background:var(--border);opacity:.65}
+.epub-chapter-item[aria-current="true"],.epub-chapter-item.active{font-weight:650;background:var(--accent-soft)}
+#v-epub .epub-nav{position:relative;align-self:center;width:calc(100% - 32px);margin:0 16px 8px;border:1px solid color-mix(in srgb,var(--border) 80%,transparent);border-radius:18px;padding:4px;background:color-mix(in srgb,var(--panel) 78%,transparent);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);gap:0;overflow:hidden}
+#v-epub .epub-nav .btn{border:0;border-radius:0;min-height:42px;flex:1}
+#v-epub .epub-nav .btn+ .btn{border-left:1px solid var(--border)}
+#v-epub .epub-nav .btn:active{background:var(--accent-soft)}
+#readingCard{text-align:var(--reader-text-align,left)}
+@media(max-width:480px){.reader-settings-panel{max-height:84dvh;border-radius:28px 28px 0 0}.epub-chapter-menu{max-height:78dvh}}
+
+
+/* v54: reading-screen comfort refinements only */
+#v-reader .reading-card{
+  padding-left:24px!important;
+  padding-right:24px!important;
+  padding-bottom:max(56px,calc(env(safe-area-inset-bottom) + 48px))!important;
+}
+#v-reader{position:relative;}
+#v-reader::after{
+  content:"";position:fixed;left:0;right:0;bottom:0;height:46px;z-index:32;pointer-events:none;
+  background:linear-gradient(to bottom, color-mix(in srgb,var(--bg) 0%,transparent),var(--bg) 94%);
+}
+#v-epub #epubStage::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:46px;z-index:5;pointer-events:none;
+  background:linear-gradient(to bottom, color-mix(in srgb,var(--bg) 0%,transparent),var(--bg) 94%);
+}
+@media(max-width:480px){#v-reader .reading-card{padding-left:24px!important;padding-right:24px!important;padding-bottom:max(60px,calc(env(safe-area-inset-bottom) + 48px))!important;}}
+
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- HOME -->
+<div class="view active" id="v-home">
+  <div class="topbar">
+    <h1 class="brand-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5c3.2-.9 5.8-.3 8 1.3v12c-2.2-1.6-4.8-2.2-8-1.3zM20 5.5c-3.2-.9-5.8-.3-8 1.3v12c2.2-1.6 4.8-2.2 8-1.3z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>Dofus Reader</h1>
+    <div class="top-actions">
+      <button class="icon-btn" id="themeBtn">🌙</button>
+      <button class="icon-btn" id="wordsBtn">📚</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-label">Новый текст</div>
+    <textarea id="inputText" placeholder="Вставь текст на английском…"></textarea>
+    <div class="row">
+      <button class="btn btn-primary" id="buildBtn">Открыть для чтения</button>
+      <button class="btn btn-secondary" id="fileBtn"><svg class="file-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5h6l2 2H20a1 1 0 0 1 1 1v7a1.5 1.5 0 0 1-1.5 1.5H4.5A1.5 1.5 0 0 1 3 17.5v-9a1 1 0 0 1 .5-1z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>Файл</button>
+      <input type="file" id="fileInput" accept="*/*">
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.6;">
+      Форматы: .txt, .epub (с AO3: Download → EPUB), .html<br>
+      Крупно — русский перевод, мелко — английский оригинал.<br>
+      Клик по английскому слову — запомнить. Ещё раз — забыть.
+    </p>
+  </div>
+  <div id="library"></div>
+  <div id="epubLibrary"></div>
+  <footer>Тексты и словарь хранятся в браузере Chrome на этом устройстве</footer>
+</div>
+
+<!-- READER -->
+<div class="view" id="v-reader">
+  <div class="epub-toolbar text-reader-toolbar">
+    <button class="icon-btn" id="backBtn" aria-label="Назад" title="Назад">←</button>
+    <span class="toolbar-spacer"></span>
+    <button class="icon-btn" id="textReaderSettings" aria-label="Настройки чтения" title="Настройки чтения">⚙</button>
+    <!-- Keep legacy controls in the DOM because existing reader code binds to them. -->
+    <span class="legacy-reader-controls" aria-hidden="true">
+      <button class="icon-btn" id="fontMinus" tabindex="-1">A−</button>
+      <button class="icon-btn" id="fontPlus" tabindex="-1">A+</button>
+      <button class="icon-btn" id="themeBtn2" tabindex="-1">🌙</button>
+      <button class="icon-btn danger" id="delBtn" tabindex="-1">🗑</button>
+    </span>
+  </div>
+  <div class="prog-wrap text-reader-progress">
+    <div class="prog-label"><span id="progTxt">0% слов известно</span><span id="progCount"></span></div>
+    <div class="prog-track"><div class="prog-fill" id="progFill" style="width:0%"></div></div>
+  </div>
+  <div class="reading-card" id="readingCard"></div>
+</div>
+
+<!-- FLOAT BAR (только в ридере, прилеплена снизу) -->
+<div class="float-bar" id="floatBar">
+  <button class="icon-btn" id="floatBack">← Назад</button>
+  <div class="font-ctrl">
+    <button id="floatMinus">A−</button>
+    <button id="floatPlus">A+</button>
+  </div>
+  <button class="icon-btn" id="floatTheme">🌙</button>
+  <button class="icon-btn" id="floatSettings" aria-label="Настройки чтения" title="Настройки чтения">⚙</button>
+</div>
+
+<!-- EPUB READER: отдельный режим, не проходит через textarea и переводчик -->
+<div class="view" id="v-epub">
+  <div class="epub-toolbar">
+    <button class="icon-btn" id="epubBack" aria-label="Назад">←</button>
+    <button class="chapter-select" id="epubChapters" type="button" aria-label="Выбрать главу"><span aria-hidden="true">☷</span><span class="chapter-title" id="epubChapterTitle">Глава 1</span></button>
+    <button class="btn btn-secondary" id="epubWholeBook" type="button" hidden aria-hidden="true" tabindex="-1">Вся книга</button>
+    <span class="toolbar-spacer"></span>
+    <button class="icon-btn" id="epubTheme" aria-label="Сменить тему" title="Сменить тему">☾</button>
+    <button class="icon-btn" id="epubSettings" aria-label="Настройки чтения" title="Настройки чтения">⚙</button>
+  </div>
+  <div class="prog-wrap" id="epubProgress">
+    <div class="prog-label"><span id="epubProgTxt">0% слов известно</span><span id="epubProgCount">0 / 0</span></div>
+    <div class="prog-track"><div class="prog-fill" id="epubProgFill" style="width:0%"></div></div>
+  </div>
+  <div id="epubStage" aria-label="Содержимое EPUB"></div>
+  <div id="epubChapterMenu" class="epub-chapter-menu" hidden><div class="epub-chapter-head"><strong>Перейти к</strong><button type="button" id="epubChapterClose" class="icon-btn">✕</button></div><div id="epubChapterList"></div></div>
+  <div class="epub-nav">
+    <button class="btn btn-secondary" id="epubPrev">← Назад</button>
+    <button class="btn btn-secondary" id="epubNext">Далее →</button>
+  </div>
+  <p class="epub-help">Форматирование книги сохраняется.</p>
+</div>
+
+<div class="reader-settings" id="readerSettings" hidden>
+  <div class="reader-settings-panel" role="dialog" aria-modal="true" aria-labelledby="readerSettingsTitle">
+    <div class="reader-settings-head"><strong id="readerSettingsTitle">Настройки чтения</strong><div class="settings-head-actions"><button type="button" class="icon-btn" id="readerFullscreenToggle" aria-label="Полноэкранный режим" title="На весь экран">⛶</button><button class="icon-btn" id="readerSettingsClose" aria-label="Закрыть">✕</button></div></div>
+    <div class="reader-setting"><label>Тема чтения</label><div class="reader-themes" id="readerThemes">
+      <button type="button" class="reader-theme" data-theme-choice="light" aria-pressed="false" aria-label="Белая тема"><span class="reader-theme-swatch" style="background:#ffffff;color:#252525">A</span><span>Белая</span></button>
+      <button type="button" class="reader-theme" data-theme-choice="gray" aria-pressed="false" aria-label="Серая тема"><span class="reader-theme-swatch" style="background:#e0e0dd;color:#242424">A</span><span>Серая</span></button>
+      <button type="button" class="reader-theme" data-theme-choice="sepia" aria-pressed="false" aria-label="Тема сепия"><span class="reader-theme-swatch" style="background:#f0dfca;color:#4f3b2b">A</span><span>Сепия</span></button>
+      <button type="button" class="reader-theme" data-theme-choice="dark" aria-pressed="false" aria-label="Тёмная тема"><span class="reader-theme-swatch" style="background:#141618;color:#e8e4dc;border-color:#555">A</span><span>Тёмная</span></button>
+    </div></div>
+    <div class="reader-setting"><label for="epubFontSelect">Шрифт</label><select id="epubFontSelect"><option value="serif">С засечками</option><option value="sans-serif">Без засечек</option><option value="monospace">Моноширинный</option></select></div>
+    <div class="reader-setting"><label for="epubFontSize">Размер оригинала и перевода</label><div class="range-decor"><input id="epubFontSize" type="range" min="16" max="34" step="1" value="22" style="width:100%"></div><div id="epubFontSizeLabel" style="text-align:center;color:var(--muted);font-size:13px">22 px</div></div>
+    <div class="reader-setting"><label for="epubLineHeight">Межстрочный интервал</label><div class="range-decor line-range"><span aria-hidden="true">≡</span><input id="epubLineHeight" type="range" min="1.2" max="2" step="0.1" value="1.6" style="width:100%"><span aria-hidden="true">☷</span></div><div id="epubLineHeightLabel" style="text-align:center;color:var(--muted);font-size:13px">1,6</div></div>
+    <div class="reader-setting"><label>Цвет знакомых слов</label><div class="reader-colors" id="readerColors">
+      <button class="reader-color" data-color="#2a9d5b" aria-pressed="true"><i style="background:#2a9d5b"></i>Зелёный</button>
+      <button class="reader-color" data-color="#27a9e0" aria-pressed="false"><i style="background:#27a9e0"></i>Голубой</button>
+      <button class="reader-color" data-color="#d6a500" aria-pressed="false"><i style="background:#d6a500"></i>Жёлтый</button>
+      <button class="reader-color" data-color="#e56ba6" aria-pressed="false"><i style="background:#e56ba6"></i>Розовый</button>
+      <button class="reader-color" data-color="#a78bfa" aria-pressed="false"><i style="background:#a78bfa"></i>Фиолетовый</button>
+    </div></div>
+  </div>
+</div>
+
+<!-- WORDS -->
+<div class="view" id="v-words">
+  <div class="topbar">
+    <h1>📚 Мой словарь</h1>
+    <button class="icon-btn" id="closeWordsBtn">✕</button>
+  </div>
+  <div class="card">
+    <p style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5;">
+      Словарь хранится в Chrome на этом устройстве. Очистка кэша браузера его сотрёт — экспортируй для надёжности.
+    </p>
+    <div class="dict-actions">
+      <button class="btn btn-secondary" id="exportBtn">⬇ Экспорт .json</button>
+      <button class="btn btn-secondary" id="importBtn">⬆ Импорт .json</button>
+      <input type="file" id="importInput" accept=".json">
+    </div>
+    <div class="card-label" id="wordsCount">0 слов</div>
+    <div class="words-list" id="wordsList"></div>
+  </div>
+</div>
+
+</div><!-- /app -->
+
+<script>
+/* ═══════════════════════════════════════════
+   ХРАНИЛИЩЕ
+═══════════════════════════════════════════ */
+const LS = {
+  known:  "er_known_v3",
+  texts:  "er_texts_v3",
+  scache: "er_scache_v3",
+  pos:    "er_pos_v3",    // { textId: sentenceIndex }
+  theme:  "er_theme_v1",
+  font:   "er_font_v3",
+};
+let known  = JSON.parse(localStorage.getItem(LS.known)  || "{}");
+// Normalize legacy dictionary keys: case and apostrophe variants must match.
+known = Object.fromEntries(Object.entries(known).filter(([k,v])=>v).map(([k,v])=>[String(k).toLowerCase().replace(/[’‘ʼ]/g,"'").replace(/^'+|'+$/g,""),true]));
+let texts  = JSON.parse(localStorage.getItem(LS.texts)  || "[]");
+let scache = JSON.parse(localStorage.getItem(LS.scache) || "{}");
+let pos    = JSON.parse(localStorage.getItem(LS.pos)    || "{}");
+const save = {
+  known:  () => localStorage.setItem(LS.known,  JSON.stringify(known)),
+  texts:  () => localStorage.setItem(LS.texts,  JSON.stringify(texts)),
+  scache: () => localStorage.setItem(LS.scache, JSON.stringify(scache)),
+  pos:    () => localStorage.setItem(LS.pos,    JSON.stringify(pos)),
+};
+
+// EPUB-файлы храним в IndexedDB: localStorage для книг слишком мал.
+const EPUB_DB_NAME = "english_reader_epubs_v1";
+let epubDbPromise = null;
+function getEpubDb(){
+  if (!("indexedDB" in window)) return Promise.reject(new Error("Этот браузер не поддерживает локальное хранение книг."));
+  if (!epubDbPromise) epubDbPromise = new Promise((resolve,reject)=>{
+    const req=indexedDB.open(EPUB_DB_NAME,1);
+    req.onupgradeneeded=()=>{ if(!req.result.objectStoreNames.contains("books")) req.result.createObjectStore("books",{keyPath:"id"}); };
+    req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error||new Error("Не удалось открыть хранилище книг."));
+  });
+  return epubDbPromise;
+}
+async function epubDbRequest(mode, action){
+  const db=await getEpubDb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction("books",mode), store=tx.objectStore("books");
+    let req; try{req=action(store);}catch(e){reject(e);return;}
+    if(req){req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error||new Error("Ошибка хранилища книг."));}
+    else {tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error||new Error("Ошибка хранилища книг."));}
+  });
+}
+const epubBookId = name => name.toLowerCase().replace(/\.epub$/i,"").replace(/[^a-z0-9а-яё]+/gi,"-").slice(0,70)+"-"+btoa(unescape(encodeURIComponent(name))).replace(/[^a-z0-9]/gi,"").slice(-10);
+async function storeEpub(file, buffer){
+  const id=epubBookId(file.name);
+  await epubDbRequest("readwrite",store=>store.put({id,name:file.name,title:file.name.replace(/\.epub$/i,""),data:buffer,updatedAt:Date.now(),lastCfi:null}));
+  renderEpubLibrary();
+  return id;
+}
+
+/* ═══════════════════════════════════════════
+   УТИЛИТЫ
+═══════════════════════════════════════════ */
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+/* ═══════════════════════════════════════════
+   ТЕМА
+═══════════════════════════════════════════ */
+const READER_PREF={fontKey:"dofus_epub_font",sizeKey:"dofus_epub_size",lineKey:"dofus_epub_line_height",colorKey:"dofus_known_color"};
+let epubFontFamily=localStorage.getItem(READER_PREF.fontKey)||"serif";
+const EPUB_FONT_OPTIONS=["serif","sans-serif","monospace"];
+// Migrate prior named-font choices to their broad, cross-platform family.
+if(!EPUB_FONT_OPTIONS.includes(epubFontFamily)){
+  epubFontFamily=(/system-ui|Arial|sans-serif/i.test(epubFontFamily) && !/Georgia|Times New Roman/i.test(epubFontFamily))?"sans-serif":"serif";
+  localStorage.setItem(READER_PREF.fontKey,epubFontFamily);
+}
+let epubFontSize=Math.max(16,Math.min(34,parseInt(localStorage.getItem(READER_PREF.sizeKey)||"22",10)||22));
+let epubLineHeight=Math.max(1.2,Math.min(2,parseFloat(localStorage.getItem(READER_PREF.lineKey)||"1.6")||1.6));
+let knownWordColor=localStorage.getItem(READER_PREF.colorKey)||"#2a9d5b";
+function applyTheme(t){
+  if(!["dark","sepia","light","gray"].includes(t)) t="dark";
+  document.documentElement.setAttribute("data-theme", t);
+  document.documentElement.style.setProperty("--known-word-color", knownWordColor || "#2a9d5b");
+  localStorage.setItem(LS.theme, t);
+  const icon = t==="dark" ? "☀" : t==="sepia" ? "◐" : t==="gray" ? "◑" : "☾";
+  ["themeBtn","themeBtn2","floatTheme","epubTheme"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = icon;
+  });
+  document.querySelectorAll(".reader-theme").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.themeChoice===t)));
+  document.querySelectorAll("#epubStage iframe").forEach(frame=>{try{applyEpubStyle(frame.contentDocument);}catch(_){}});
+}
+function toggleTheme(){
+  const t=document.documentElement.getAttribute("data-theme")||"dark";
+  const order=["light","gray","sepia","dark"];
+  applyTheme(order[(order.indexOf(t)+1)%order.length]);
+}
+document.documentElement.style.setProperty("--known-word-color",knownWordColor);
+applyTheme(localStorage.getItem(LS.theme)||"gray");
+document.getElementById("themeBtn").onclick  = toggleTheme;
+document.getElementById("themeBtn2").onclick = toggleTheme;
+document.getElementById("floatTheme").onclick = toggleTheme;
+document.getElementById("floatSettings").onclick = ()=>{syncReaderSettings();document.getElementById("readerSettings").hidden=false;};
+
+/* ═══════════════════════════════════════════
+   ШРИФТ
+═══════════════════════════════════════════ */
+let ruSize = parseInt(localStorage.getItem(LS.font)||"22", 10);
+function applyFont(){
+  const card = document.getElementById("readingCard");
+  card.style.setProperty("--ru-size", ruSize+"px");
+  card.style.setProperty("--en-size", Math.round(ruSize*0.64)+"px");
+  card.style.setProperty("--reader-font-family", epubFontFamily==="serif"?"var(--serif)":epubFontFamily);
+  card.style.setProperty("--reader-line-height", String(epubLineHeight));
+  localStorage.setItem(LS.font, ruSize);
+}
+function fontUp(){ ruSize=Math.min(ruSize+2,34); epubFontSize=ruSize; localStorage.setItem(READER_PREF.sizeKey,epubFontSize); applyFont(); }
+function fontDown(){ ruSize=Math.max(ruSize-2,16); epubFontSize=ruSize; localStorage.setItem(READER_PREF.sizeKey,epubFontSize); applyFont(); }
+document.getElementById("fontPlus").onclick   = fontUp;
+document.getElementById("fontMinus").onclick  = fontDown;
+document.getElementById("floatPlus").onclick  = fontUp;
+document.getElementById("floatMinus").onclick = fontDown;
+
+/* ═══════════════════════════════════════════
+   FLOAT BAR (показывается только в ридере)
+═══════════════════════════════════════════ */
+function setFloatBar(visible){
+  document.getElementById("floatBar").classList.toggle("visible", visible);
+}
+document.getElementById("floatBack").onclick = () => { saveScrollPos(); renderLibrary(); showView("v-home"); };
+
+/* ═══════════════════════════════════════════
+   НАВИГАЦИЯ
+═══════════════════════════════════════════ */
+let prevView = "v-home";
+function showView(id){
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+  setFloatBar(false);
+}
+document.getElementById("backBtn").onclick = () => { saveScrollPos(); renderLibrary(); showView("v-home"); };
+document.getElementById("wordsBtn").onclick  = () => { prevView="v-home";   renderWords(); showView("v-words"); };
+document.getElementById("closeWordsBtn").onclick = () => showView(prevView);
+
+/* ═══════════════════════════════════════════
+   СВАЙП ВЛЕВО = НАЗАД (в ридере)
+═══════════════════════════════════════════ */
+let _tx = 0;
+document.addEventListener("touchstart", e => { _tx = e.changedTouches[0].clientX; }, {passive:true});
+document.addEventListener("touchend", e => {
+  if (!document.getElementById("v-reader").classList.contains("active")) return;
+  const dx = _tx - e.changedTouches[0].clientX;
+  const dy = Math.abs(e.changedTouches[0].clientY - e.changedTouches[0].screenY);
+  if (dx > 60 && dy < 40){ saveScrollPos(); renderLibrary(); showView("v-home"); }
+}, {passive:true});
+
+/* ═══════════════════════════════════════════
+   ПОЗИЦИЯ ЧТЕНИЯ
+═══════════════════════════════════════════ */
+function saveScrollPos(){
+  if (!currentId) return;
+  // находим первый .sent-block который видно на экране
+  const blocks = document.querySelectorAll(".sent-block[data-si]");
+  for (const b of blocks){
+    const rect = b.getBoundingClientRect();
+    if (rect.bottom > 0){
+      pos[currentId] = parseInt(b.dataset.si);
+      save.pos();
+      break;
+    }
+  }
+}
+function restoreScrollPos(){
+  if (!currentId || pos[currentId] == null) return;
+  // небольшая задержка чтобы DOM отрисовался
+  setTimeout(() => {
+    const el = document.querySelector(`.sent-block[data-si="${pos[currentId]}"]`);
+    if (el) el.scrollIntoView({block:"start", behavior:"instant"});
+  }, 80);
+}
+// автосохранение позиции при скролле (debounce)
+let _scrollTimer = null;
+window.addEventListener("scroll", () => {
+  if (!document.getElementById("v-reader").classList.contains("active")) return;
+  clearTimeout(_scrollTimer);
+  _scrollTimer = setTimeout(saveScrollPos, 400);
+}, {passive:true});
+
+/* ═══════════════════════════════════════════
+   ЗАГРУЗКА ФАЙЛА (.txt / .epub / .html)
+═══════════════════════════════════════════ */
+document.getElementById("fileBtn").onclick = () => document.getElementById("fileInput").click();
+document.getElementById("fileInput").onchange = async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const name = file.name.toLowerCase();
+  try {
+    if (name.endsWith(".epub")) {
+      // EPUB — исключение: открываем исходную книгу напрямую, не переводим в textarea.
+      await openEpubDirect(file);
+    } else {
+      let text;
+      if (name.endsWith(".html") || name.endsWith(".htm")) text = htmlToText(await readAsText(file));
+      else text = await readAsText(file);
+      document.getElementById("inputText").value = text;
+    }
+  } catch (err) {
+    alert("Не удалось открыть файл: " + (err?.message || err));
+  }
+  e.target.value = "";
+};
+
+let activeEpubBook = null;
+let activeEpubRendition = null;
+let epubLoaderPromise = null;
+let activeEpubId = null;
+async function ensureEpubModule() {
+  if (typeof ePub === "function") return;
+  if (!epubLoaderPromise) {
+    epubLoaderPromise = (async () => {
+      const sources = [
+        "https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.93/epub.min.js",
+        "https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js",
+        "https://unpkg.com/epubjs@0.3.93/dist/epub.min.js"
+      ];
+      for (const src of sources) {
+        try {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            const timer = setTimeout(() => {
+              script.onload = script.onerror = null;
+              script.remove();
+              reject(new Error("timeout"));
+            }, 9000);
+            script.src = src;
+            script.onload = () => { clearTimeout(timer); resolve(); };
+            script.onerror = () => { clearTimeout(timer); script.remove(); reject(new Error("load failed")); };
+            document.head.appendChild(script);
+          });
+          if (typeof ePub === "function") return;
+        } catch (_) { /* пробуем следующий CDN */ }
+      }
+      throw new Error("Не удалось загрузить библиотеку EPUB с трёх источников. Нужен интернет для одного из CDN; попробуй отключить блокировщик или VPN и обновить страницу.");
+    })().catch(err => { epubLoaderPromise = null; throw err; });
+  }
+  await epubLoaderPromise;
+}
+async function openEpubDirect(file, options = {}) {
+  await ensureEpubModule();
+  // Сначала читаем файл в память. Старый просмотрщик закрываем только после успешного чтения.
+  const buffer = await file.arrayBuffer();
+  if (!buffer || buffer.byteLength < 4) throw new Error("Файл пустой или не удалось его прочитать.");
+
+  if (activeEpubRendition) {
+    try { activeEpubRendition.destroy(); } catch (_) {}
+    activeEpubRendition = null;
+  }
+  if (activeEpubBook) {
+    try { activeEpubBook.destroy(); } catch (_) {}
+    activeEpubBook = null;
+  }
+  const stage = document.getElementById("epubStage");
+  stage.replaceChildren();
+  stage.classList.remove("epub-whole-mode");
+  epubWholeBookMode = false;
+  const wholeButton = document.getElementById("epubWholeBook");
+  if (wholeButton) { wholeButton.textContent = "Вся книга"; wholeButton.setAttribute("aria-pressed", "false"); }
+  showView("v-epub");
+
+  try {
+    const book = ePub(buffer);
+    activeEpubBook = book;
+    const rendition = book.renderTo(stage, {
+      width: "100%", height: "100%", spread: "none",
+      flow: "scrolled", allowScriptedContent: false
+    });
+    activeEpubRendition = rendition;
+    // Diagnostic test: suppress only repeated identical calls through our app's public resize()
+    // within 500 ms. Do not block EPUB.js internal display() or its own resize event handler.
+    const originalResize = rendition.resize.bind(rendition);
+    let lastResizeKey = "", lastResizeAt = 0;
+    rendition.resize = function(width, height) {
+      const key = String(width) + "|" + String(height), now = Date.now();
+      if (key === lastResizeKey && now - lastResizeAt < 500) {
+        window.__erResizeDiagLog?.('DEDUPED_APP_RESIZE '+key+' delta='+(now-lastResizeAt)+'ms');
+        return this;
+      }
+      lastResizeKey = key; lastResizeAt = now;
+      window.__erResizeDiagLog?.('APP_RESIZE '+key);
+      return originalResize(width, height);
+    };
+    rendition.on("relocated", location => {
+      window.__erResizeDiagLog?.('RELOCATED '+(location?.start?.cfi||'')+' displayed='+location?.start?.displayed?.page+'/'+location?.start?.displayed?.total+' '+window.__erMeasureEpub?.());
+    });
+    rendition.hooks.content.register(contents => {
+      try { enhanceEpubDocument(contents.document); } catch (err) { console.warn("EPUB enhancement:", err); }
+      try { installReaderFullscreenDoubleTap(contents.document); } catch (err) { console.warn("Fullscreen gesture:", err); }
+    });
+    await book.ready;
+    activeEpubId = options.storedId || null;
+    if (options.saveCopy !== false) activeEpubId = await storeEpub(file, buffer);
+    const savedMeta = activeEpubId ? await epubDbRequest("readonly", store => store.get(activeEpubId)) : null;
+    // A stale CFI can occasionally restore to an empty iframe on mobile. Try it,
+    // then explicitly fall back to the first spine item and force a resize.
+    let restored = false;
+    if (savedMeta?.lastCfi) { try { await rendition.display(savedMeta.lastCfi); restored = true; } catch (_) {} }
+    if (!restored) { const first = book.spine?.first?.(); await rendition.display(first?.href || undefined); }
+    requestAnimationFrame(()=>{try{rendition.resize("100%","100%");}catch(_){};});
+    setTimeout(()=>{try{rendition.resize("100%","100%");}catch(_){};},350);
+    rendition.on("relocated", location => {
+      try {
+        const href=String(location?.start?.href||"").split("#")[0];
+        const toc=activeEpubBook?.navigation?.toc||[]; const flat=[];
+        const walk=items=>items.forEach(item=>{flat.push(item);if(item.subitems?.length)walk(item.subitems);}); walk(toc);
+        const item=flat.find(entry=>String(entry.href||"").split("#")[0]===href);
+        const label=String(item?.label||"").replace(/<[^>]*>/g,"").trim();
+        const match=label.match(/(?:chapter|глава)\s*([0-9ivxlcdm]+)/i);
+        document.getElementById("epubChapterTitle").textContent=match?"Глава "+match[1]:label?label.slice(0,24):"Глава";
+      } catch(_) {}
+      if (!activeEpubId || !location?.start?.cfi) return;
+      const id=activeEpubId, cfi=location.start.cfi;
+      clearTimeout(window.__erEpubPosTimer);
+      window.__erEpubPosTimer=setTimeout(async()=>{
+        try { const old=await epubDbRequest("readonly",store=>store.get(id)); if(old) await epubDbRequest("readwrite",store=>store.put({...old,lastCfi:cfi,updatedAt:Date.now()})); } catch(e){ console.warn("EPUB position save:",e); }
+      },500);
+    });
+    // Повторная обработка после перехода между главами выполняется EPUB.js hook.
+    // Нажатие стрелок клавиатуры перелистывает книгу; навигация кнопками доступна на телефоне.
+  } catch (err) {
+    if (activeEpubRendition) { try { activeEpubRendition.destroy(); } catch (_) {} }
+    if (activeEpubBook) { try { activeEpubBook.destroy(); } catch (_) {} }
+    activeEpubRendition = null;
+    activeEpubBook = null;
+    activeEpubId = null;
+    stage.replaceChildren();
+    showView("v-home");
+    throw new Error("EPUB не удалось отобразить: " + (err?.message || err));
+  }
+}
+
+document.getElementById("epubBack").onclick = () => {
+  if (activeEpubRendition) { try { activeEpubRendition.destroy(); } catch (_) {} }
+  if (activeEpubBook) { try { activeEpubBook.destroy(); } catch (_) {} }
+  activeEpubRendition = null;
+  activeEpubBook = null;
+  activeEpubId = null;
+  document.getElementById("epubStage").replaceChildren();
+  renderEpubLibrary();
+  showView("v-home");
+};
+document.getElementById("epubTheme").onclick = toggleTheme;
+document.getElementById("readerThemes").addEventListener("click",ev=>{const b=ev.target.closest(".reader-theme");if(b)applyTheme(b.dataset.themeChoice);});
+document.getElementById("epubSettings").onclick = ()=>{syncReaderSettings();document.getElementById("readerSettings").hidden=false;};
+document.getElementById("textReaderSettings").onclick = ()=>{syncReaderSettings();document.getElementById("readerSettings").hidden=false;};
+document.getElementById("readerSettingsClose").onclick = ()=>document.getElementById("readerSettings").hidden=true;
+document.getElementById("readerSettings").addEventListener("click",ev=>{if(ev.target.id==="readerSettings")ev.currentTarget.hidden=true;});
+// Dismiss the settings/chapter sheets with a downward swipe on their drag handle.
+function installSheetSwipe(sheet, panel){
+  if(!sheet||!panel||panel.dataset.swipeReady) return; panel.dataset.swipeReady="1"; let startY=0, startX=0;
+  panel.addEventListener("touchstart",ev=>{const t=ev.touches[0];startY=t.clientY;startX=t.clientX;},{passive:true});
+  panel.addEventListener("touchend",ev=>{const t=ev.changedTouches[0],dy=t.clientY-startY,dx=Math.abs(t.clientX-startX);if(dy>90&&dy>dx*1.25){sheet.hidden=true;}},{passive:true});
+}
+installSheetSwipe(document.getElementById("readerSettings"),document.querySelector("#readerSettings .reader-settings-panel"));
+installSheetSwipe(document.getElementById("epubChapterMenu"),document.getElementById("epubChapterMenu"));
+function getFullscreenElement(){return document.fullscreenElement || document.webkitFullscreenElement || null;}
+function syncFullscreenButton(){
+  const b=document.getElementById("readerFullscreenToggle");
+  if(b){b.textContent=getFullscreenElement()?"⛶":"⛶";b.setAttribute("aria-label",getFullscreenElement()?"Выйти из полноэкранного режима":"Полноэкранный режим");b.title=b.getAttribute("aria-label");}
+}
+async function toggleReaderFullscreen(){
+  const root=document.documentElement;
+  try{
+    if(getFullscreenElement()){
+      const exit=document.exitFullscreen || document.webkitExitFullscreen;
+      if(exit) await exit.call(document);
+      else return;
+    }else{
+      const request=root.requestFullscreen || root.webkitRequestFullscreen;
+      if(request) await request.call(root);
+      else { alert("Полноэкранный режим не поддерживается этим браузером. На iPhone он может быть недоступен для веб-страниц."); return; }
+    }
+  }catch(err){console.warn("Fullscreen unavailable:",err);}
+  syncFullscreenButton();
+  setTimeout(recoverEpubLayout,100);
+}
+document.getElementById("readerFullscreenToggle").addEventListener("click",()=>{document.getElementById("readerSettings").hidden=true;toggleReaderFullscreen();});
+document.addEventListener("fullscreenchange",syncFullscreenButton);
+document.addEventListener("webkitfullscreenchange",syncFullscreenButton);
+let _readerLastTap=0;
+function installReaderFullscreenDoubleTap(doc){
+  if(!doc || doc.__erFullscreenTapInstalled) return;
+  doc.__erFullscreenTapInstalled=true;
+  doc.addEventListener("pointerup",ev=>{
+    if(!document.getElementById("v-epub").classList.contains("active")) return;
+    if(ev.pointerType==="mouse" && ev.button!==0) return;
+    const target=ev.target;
+    if(!target || target.closest?.("button,a,input,select,textarea,[contenteditable='true'],.er-word-button")) { _readerLastTap=0; return; }
+    const selection=doc.getSelection?.();
+    if(selection && !selection.isCollapsed) { _readerLastTap=0; return; }
+    const now=Date.now();
+    if(now-_readerLastTap>350){_readerLastTap=now;return;}
+    _readerLastTap=0;
+    toggleReaderFullscreen();
+  },{passive:true});
+}
+function syncReaderSettings(){
+  if(document.getElementById("v-reader").classList.contains("active")){
+    epubFontSize=ruSize;
+    localStorage.setItem(READER_PREF.sizeKey,epubFontSize);
+  }
+  document.getElementById("epubFontSelect").value=epubFontFamily;
+  document.getElementById("epubFontSize").value=epubFontSize;
+  document.getElementById("epubFontSizeLabel").textContent=epubFontSize+" px";
+  document.getElementById("epubLineHeight").value=epubLineHeight;
+  document.getElementById("epubLineHeightLabel").textContent=epubLineHeight.toFixed(1).replace(".",",");
+  document.querySelectorAll(".reader-color").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.color===knownWordColor)));
+  document.querySelectorAll(".reader-theme").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.themeChoice===(document.documentElement.getAttribute("data-theme")||"dark"))));
+}
+document.getElementById("epubFontSelect").addEventListener("change",ev=>{epubFontFamily=ev.target.value;localStorage.setItem(READER_PREF.fontKey,epubFontFamily);applyFont();document.querySelectorAll("#epubStage iframe").forEach(frame=>{try{applyEpubStyle(frame.contentDocument);}catch(_){}});});
+document.getElementById("epubFontSize").addEventListener("input",ev=>{epubFontSize=Number(ev.target.value);ruSize=epubFontSize;localStorage.setItem(READER_PREF.sizeKey,epubFontSize);localStorage.setItem(LS.font,ruSize);document.getElementById("epubFontSizeLabel").textContent=epubFontSize+" px";applyFont();document.querySelectorAll("#epubStage iframe").forEach(frame=>{try{applyEpubStyle(frame.contentDocument);}catch(_){}});});
+document.getElementById("epubLineHeight").addEventListener("input",ev=>{epubLineHeight=Number(ev.target.value);localStorage.setItem(READER_PREF.lineKey,String(epubLineHeight));document.getElementById("epubLineHeightLabel").textContent=epubLineHeight.toFixed(1).replace(".",",");applyFont();document.querySelectorAll("#epubStage iframe").forEach(frame=>{try{applyEpubStyle(frame.contentDocument);}catch(_){}});});
+document.getElementById("readerColors").addEventListener("click",ev=>{const b=ev.target.closest(".reader-color");if(!b)return;knownWordColor=b.dataset.color;document.documentElement.style.setProperty("--known-word-color",knownWordColor);localStorage.setItem(READER_PREF.colorKey,knownWordColor);syncReaderSettings();document.querySelectorAll("#epubStage iframe").forEach(frame=>{try{applyEpubStyle(frame.contentDocument);}catch(_){}});});
+document.getElementById("epubPrev").onclick = () => activeEpubRendition?.prev().catch(err => console.warn("EPUB prev:", err));
+document.getElementById("epubNext").onclick = () => activeEpubRendition?.next().catch(err => console.warn("EPUB next:", err));
+function recoverEpubLayout(){if(!activeEpubRendition||!document.getElementById("v-epub").classList.contains("active"))return;try{activeEpubRendition.resize("100%",epubWholeBookMode?"auto":"100%");}catch(_){};}
+window.addEventListener("orientationchange",()=>setTimeout(recoverEpubLayout,250));
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)setTimeout(recoverEpubLayout,250);});
+// Find the first actual story chapter in the EPUB navigation. AO3 exports often put
+// a preface/tag page and a summary page before Chapter 1; these are not the reading start.
+function getFirstStoryHref(book){
+  const toc=book?.navigation?.toc||[];
+  const flat=[];
+  const walk=items=>{for(const item of (items||[])){if(item?.href)flat.push(item);if(item?.subitems?.length)walk(item.subitems);}};
+  walk(toc);
+  const firstChapter=flat.find(item=>/\bchapter\s*1\b|\bchapter\s*one\b/i.test(String(item.label||'').replace(/<[^>]*>/g,' ')));
+  if(firstChapter?.href) return firstChapter.href;
+  // Fallback: skip the first spine pages when their navigation labels are Preface/Summary.
+  const metadataLabels=/^(preface|summary|notes|table of contents|contents|title page)$/i;
+  const firstStory=flat.find(item=>!metadataLabels.test(String(item.label||'').trim()));
+  return firstStory?.href || book?.spine?.first?.()?.href || undefined;
+}
+// EPUB.js continuous flow joins spine sections into one long scrolling view.
+let epubWholeBookMode = false;
+document.getElementById("epubWholeBook").onclick = async () => {
+  if (!activeEpubBook || !activeEpubRendition) return;
+  const button = document.getElementById("epubWholeBook");
+  const oldText = button.textContent;
+  button.disabled = true;
+  try {
+    if (!epubWholeBookMode) {
+      // scrolled-doc uses EPUB.js's continuous manager and loads adjacent spine items
+      // as the reader scrolls. Start from the first real spine item, not the current chapter.
+      epubWholeBookMode = true;
+      document.getElementById("epubStage").classList.add("epub-whole-mode");
+      activeEpubRendition.flow("scrolled-doc");
+      const firstHref = getFirstStoryHref(activeEpubBook);
+      await activeEpubRendition.display(firstHref);
+      activeEpubRendition.resize("100%", "auto");
+      requestAnimationFrame(()=>{try{activeEpubRendition?.resize("100%","auto");}catch(_){}});
+      setTimeout(()=>{try{activeEpubRendition?.resize("100%","auto");}catch(_){}},400);
+      button.textContent = "По главам";
+      button.setAttribute("aria-pressed", "true");
+    } else {
+      epubWholeBookMode = false;
+      document.getElementById("epubStage").classList.remove("epub-whole-mode");
+      document.getElementById("epubStage").style.height="";
+      activeEpubRendition.flow("scrolled");
+      const loc = activeEpubRendition.currentLocation?.();
+      const href = loc?.start?.href;
+      document.getElementById("epubStage").style.height="";
+      await activeEpubRendition.display(href || undefined);
+      activeEpubRendition.resize("100%", "100%");
+      button.textContent = "Вся книга";
+      button.setAttribute("aria-pressed", "false");
+    }
+  } catch (err) {
+    console.warn("EPUB view mode:", err);
+    epubWholeBookMode = !epubWholeBookMode;
+    document.getElementById("epubStage").classList.toggle("epub-whole-mode", epubWholeBookMode);
+    button.textContent = oldText;
+  } finally { button.disabled = false; }
+};
+
+// Навигация по оглавлению EPUB. Вариант «Вся книга» включает непрерывную прокрутку.
+const chapterMenu=document.getElementById("epubChapterMenu");
+document.getElementById("epubChapters").onclick=()=>{
+  if(!activeEpubBook) return;
+  const list=document.getElementById("epubChapterList"); list.replaceChildren();
+  const addItem=(label, action)=>{const b=document.createElement("button");b.className="epub-chapter-item";b.textContent=label;b.onclick=async()=>{chapterMenu.hidden=true;try{await action();}catch(e){console.warn("EPUB navigation",e);}};list.append(b);};
+  addItem("Вся книга",async()=>{if(!epubWholeBookMode)document.getElementById("epubWholeBook").click();else await activeEpubRendition?.display(getFirstStoryHref(activeEpubBook));});
+  const toc=activeEpubBook.navigation?.toc||[];
+  const flatten=(items,depth=0)=>items.forEach(item=>{if(item.href)addItem("　".repeat(Math.min(depth,4))+(item.label||"Глава"),async()=>{if(epubWholeBookMode){epubWholeBookMode=false;document.getElementById("epubStage").classList.remove("epub-whole-mode");document.getElementById("epubStage").style.height="";activeEpubRendition.flow("scrolled");document.getElementById("epubWholeBook").textContent="Вся книга";document.getElementById("epubWholeBook").setAttribute("aria-pressed","false");}await activeEpubRendition.display(item.href);activeEpubRendition.resize("100%","100%");});if(item.subitems?.length)flatten(item.subitems,depth+1);});
+  flatten(toc);
+  if(!toc.length){activeEpubBook.spine?.each?.(item=>{if(item.href)addItem(item.idref||item.href,()=>activeEpubRendition.display(item.href));});}
+  chapterMenu.hidden=false;
+};
+document.getElementById("epubChapterClose").onclick=()=>chapterMenu.hidden=true;
+document.addEventListener("pointerdown",ev=>{
+  if(chapterMenu.hidden) return;
+  const trigger=document.getElementById("epubChapters");
+  if(!chapterMenu.contains(ev.target) && !trigger.contains(ev.target)) chapterMenu.hidden=true;
+});
+document.addEventListener("keydown",ev=>{if(ev.key==="Escape") chapterMenu.hidden=true;});
+
+// EPUB остаётся структурированным документом: исходные элементы и их форматирование
+// сохраняются, перевод добавляется отдельным блоком, а словарные слова оборачиваются
+// только внутри текстовых узлов.
+function epubThemeCss(){
+  const theme=document.documentElement.getAttribute("data-theme")||"dark";
+  const palette=theme==="dark"?{bg:"#1c1c1e",fg:"#e8e4dc",muted:"#96999d"}:theme==="sepia"?{bg:"#f0dfca",fg:"#3a322c",muted:"#8b7764"}:theme==="gray"?{bg:"#e3e3e1",fg:"#242424",muted:"#62625f"}:{bg:"#ffffff",fg:"#252525",muted:"#666666"};
+  const {bg,fg,muted}=palette;
+  return `html,body{background:${bg}!important;color:${fg}!important;font-family:${epubFontFamily}!important;font-size:${epubFontSize}px!important;line-height:${epubLineHeight}!important}\n    body{margin-left:0!important;margin-right:0!important;padding-left:20px!important;padding-right:20px!important;}\n    body,body *{font-family:${epubFontFamily}!important;line-height:${epubLineHeight}!important;font-weight:400!important;}
+    b,strong,th{font-weight:650!important;}
+    h1,h2,h3,h4,h5,h6{font-weight:600!important;line-height:1.25!important;opacity:.84!important;margin-top:1.15em!important;margin-bottom:.65em!important;}
+    a:link,a:visited,a:hover,a:active{color:inherit!important}
+    .er-translation{display:block;width:100%;box-sizing:border-box;margin:0 0 .25em!important;padding:0!important;
+      color:${fg}!important;font-family:${epubFontFamily}!important;font-size:${epubFontSize}px!important;font-weight:400!important;line-height:${epubLineHeight}!important;
+      font-style:normal!important;white-space:normal!important;}
+    .er-passage-chunk{margin-bottom:.85em!important;}
+    .er-translation.er-pending{font-size:.85em!important;font-weight:400!important;color:${muted}!important;font-style:italic!important}
+    .er-word{cursor:pointer!important;color:inherit!important;border-radius:2px}
+    .er-word.er-known{color:${knownWordColor}!important;font-weight:700!important}
+    .er-symbol-green{color:${knownWordColor}!important}
+    .er-word.er-known:hover{text-decoration:none!important}
+    /* AO3 work metadata: separate card and readable tag chips */
+    #workskin .work.meta.group, #workskin dl.work.meta.group, .work.meta.group, dl.work.meta.group, .work.meta, .meta.group{
+      box-sizing:border-box!important;background:color-mix(in srgb,${fg} 5%,${bg})!important;
+      border:1px solid color-mix(in srgb,${fg} 12%,transparent)!important;border-radius:14px!important;
+      padding:14px 14px 10px!important;margin:0 0 1.25em!important;
+    }
+    .work.meta.group .tags, dl.work.meta.group .tags, .meta.group .tags, #workskin .tags{
+      display:flex!important;flex-wrap:wrap!important;gap:6px!important;align-items:flex-start!important;
+    }
+    .work.meta.group .tags li, dl.work.meta.group .tags li, .meta.group .tags li, #workskin .tags li{
+      display:inline-flex!important;max-width:100%!important;margin:0!important;padding:0!important;
+    }
+    .work.meta.group .tags a, dl.work.meta.group .tags a, .meta.group .tags a, #workskin .tags a{
+      display:inline-block!important;box-sizing:border-box!important;border:1px solid color-mix(in srgb,${fg} 17%,transparent)!important;
+      border-radius:999px!important;padding:3px 8px!important;background:color-mix(in srgb,${fg} 4%,${bg})!important;
+      white-space:normal!important;overflow-wrap:anywhere!important;text-decoration:none!important;font-size:.78em!important;line-height:1.35!important;
+    }
+    .work.meta.group h2, .work.meta.group h3, .meta.group h2, .meta.group h3{margin-top:.2em!important}
+    `;
+}
+function applyEpubStyle(doc){
+  let st=doc.getElementById("er-reader-style");
+  if(!st){st=doc.createElement("style");st.id="er-reader-style";(doc.head||doc.documentElement).appendChild(st);}
+  st.textContent=epubThemeCss();
+}
+// Progress is calculated from the text blocks currently loaded by EPUB.js.
+// It uses the same global known-word dictionary as the regular reader.
+function updateEpubProgress(){
+  let total=0,knownCount=0;
+  document.querySelectorAll("#epubStage iframe").forEach(frame=>{
+    try{
+      const doc=frame.contentDocument;
+      if(!doc) return;
+      doc.querySelectorAll(".er-word").forEach(el=>{total++;if(known[cleanWord(el.dataset.word||"")])knownCount++;});
+    }catch(_){}
+  });
+  const pct=total?Math.round(knownCount/total*100):0;
+  const fill=document.getElementById("epubProgFill");
+  const txt=document.getElementById("epubProgTxt");
+  const count=document.getElementById("epubProgCount");
+  if(fill)fill.style.width=pct+"%";
+  if(txt)txt.textContent=pct+"% слов известно";
+  if(count)count.textContent=`${knownCount} / ${total}`;
+}
+
+// Split only very long paragraphs at sentence boundaries before translations
+// and clickable word spans are added. Each resulting paragraph is translated
+// independently; Range.cloneContents preserves inline markup such as em/strong/a.
+function splitLongEpubParagraphs(doc, maxNonSpace=150){
+  if(!doc || !doc.body) return;
+  const paragraphs=Array.from(doc.body.querySelectorAll("p"));
+  for(const p of paragraphs){
+    if(p.closest("nav,header,footer,script,style,.er-translation") || p.dataset.erChunked) continue;
+    const walker=doc.createTreeWalker(p,NodeFilter.SHOW_TEXT,{acceptNode(n){
+      return n.parentElement?.closest(".er-translation") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+    }});
+    const nodes=[]; let full="";
+    while(walker.nextNode()){const n=walker.currentNode;nodes.push({node:n,start:full.length,end:full.length+n.nodeValue.length});full+=n.nodeValue;}
+    const count=full.replace(/\s/g,"").length;
+    if(count<=maxNonSpace || !/[.!?][”’"')\]]?\s/.test(full)) continue;
+    let sentences=[];
+    try{
+      if(typeof Intl!="undefined" && Intl.Segmenter){
+        const seg=new Intl.Segmenter("en",{granularity:"sentence"});
+        sentences=Array.from(seg.segment(full),x=>({start:x.index,end:x.index+x.segment.length,text:x.segment}));
+      }
+    }catch(_){}
+    if(!sentences.length){
+      const re=/[^.!?]+[.!?]+[”’"')\]]*\s*|[^.!?]+$/g; let m;
+      while((m=re.exec(full))) sentences.push({start:m.index,end:m.index+m[0].length,text:m[0]});
+    }
+    if(sentences.length<2) continue;
+    const chunks=[]; let current=null, currentCount=0;
+    for(const sentence of sentences){
+      const n=sentence.text.replace(/\s/g,"").length;
+      if(current && currentCount+n>maxNonSpace){chunks.push(current);current=null;currentCount=0;}
+      if(!current) current={start:sentence.start,end:sentence.end}; else current.end=sentence.end;
+      currentCount+=n;
+    }
+    if(current) chunks.push(current);
+    if(chunks.length<2) continue;
+    const replacements=[];
+    for(const ch of chunks){
+      const first=nodes.find(x=>x.start<=ch.start && ch.start<x.end) || nodes.find(x=>x.start===ch.start);
+      const last=[...nodes].reverse().find(x=>x.start<ch.end && ch.end<=x.end) || [...nodes].reverse().find(x=>x.end===ch.end);
+      if(!first || !last) { replacements.length=0; break; }
+      const range=doc.createRange();
+      range.setStart(first.node,Math.max(0,ch.start-first.start));
+      range.setEnd(last.node,Math.min(last.node.nodeValue.length,ch.end-last.start));
+      const fragment=range.cloneContents();
+      const clone=doc.createElement("p");
+      for(const attr of Array.from(p.attributes)) if(attr.name!=="id" && attr.name!=="data-er-processed" && attr.name!=="data-er-translation-block") clone.setAttribute(attr.name,attr.value);
+      clone.appendChild(fragment); replacements.push(clone);
+    }
+    if(replacements.length===chunks.length){
+      if(p.id) replacements[0].id=p.id;
+      p.dataset.erChunked="1";
+      p.replaceWith(...replacements);
+    }
+  }
+}
+
+// Translate semantic blocks in place: the Russian line lives inside the same
+// paragraph/block as the original, so it stays aligned with that block's width.
+function enhanceEpubDocument(doc){
+  if(!doc || !doc.body) return;
+  applyEpubStyle(doc);
+  splitLongEpubParagraphs(doc,150);
+  let blocks=Array.from(doc.body.querySelectorAll("p, blockquote, li, h1, h2, h3, h4, h5, h6, pre"));
+  blocks=blocks.filter(el=>!el.closest("nav,header,footer,script,style,.er-translation") && !el.dataset.erProcessed);
+  // Prefer the innermost real text block. A list item or blockquote that wraps
+  // paragraphs must not be translated a second time as one large parent block.
+  blocks=blocks.filter(el=>{
+    if(el.matches("li,blockquote") && el.querySelector("p,blockquote,li,h1,h2,h3,h4,h5,h6,pre")) return false;
+    return true;
+  });
+  // EPUBs that use divs for paragraphs: process only leaf divs to avoid duplicate translations.
+  if(!blocks.length && !doc.body.querySelector("p,blockquote,li,h1,h2,h3,h4,h5,h6,pre")){
+    blocks=Array.from(doc.body.querySelectorAll("div")).filter(el=>!el.querySelector("div,p,blockquote,li,h1,h2,h3,h4,h5,h6,pre") && !el.closest("nav,header,footer,script,style,.er-translation") && !el.dataset.erProcessed);
+  }
+  for(const el of blocks){
+    const text=(el.innerText||el.textContent||"").replace(/\s+/g," ").trim();
+    // Always tokenize any block containing letters. The old two-consecutive-letter
+    // gate skipped blocks like "N O", so their individual letters never got spans
+    // or click handlers. Translation still requires a normal multi-letter word.
+    if(!text || !/[A-Za-z]/i.test(text)) continue;
+    el.dataset.erProcessed="1";
+    const shouldTranslate = /[A-Za-z]{2}/.test(text) && enWords(text).length > 0;
+    let ru=null;
+    if(shouldTranslate){
+      const cachedValue = scache[text];
+      const cachedTranslation = cachedValue !== undefined && cachedValue !== ER_SKIP_TRANSLATION
+        ? String(cachedValue ?? "") : "";
+      const hasCachedTranslation = !!cachedTranslation && looksLikeTranslation(text, cachedTranslation);
+      ru=doc.createElement("div");
+      ru.className="er-translation" + (hasCachedTranslation || cachedValue === ER_SKIP_TRANSLATION ? "" : " er-pending");
+      ru.textContent = cachedValue === ER_SKIP_TRANSLATION ? "" : (hasCachedTranslation ? cachedTranslation : "Переводится…");
+      ru.setAttribute("aria-live","polite");
+      // Insert inside the original block, before its original content.
+      el.insertBefore(ru,el.firstChild);
+      el.dataset.erTranslationBlock="1";
+    }
+    wrapEpubWords(el,doc);
+    if(ru){
+      const cachedValue = scache[text];
+      const cachedTranslation = cachedValue !== undefined && cachedValue !== ER_SKIP_TRANSLATION
+        ? String(cachedValue ?? "") : "";
+      const hasCachedTranslation = !!cachedTranslation && looksLikeTranslation(text, cachedTranslation);
+      if(cachedValue === ER_SKIP_TRANSLATION){
+        ru.dataset.erSkipped="1";
+      } else if(hasCachedTranslation){
+        // Reuse a valid cached translation immediately instead of flashing a pending line.
+      } else if(isLikelyGibberish(text)){
+        scache[text]=ER_SKIP_TRANSLATION; save.scache();
+        ru.textContent=""; ru.classList.remove("er-pending"); ru.dataset.erSkipped="1";
+      } else {
+        ru.dataset.erQueued="1";
+        epubTranslationQueue.push({text,ru,block:el});
+      }
+      updateEpubTranslationVisibility(el);
+    }
+  }
+  if(epubTranslationQueue.length) runEpubTranslationQueue();
+  applyEpubStyle(doc);
+  updateEpubProgress();
+}
+function updateEpubTranslationVisibility(block){
+  if(!block) return;
+  const ru=block.querySelector(":scope > .er-translation");
+  if(!ru) return;
+  // Use the exact tokens that were made clickable. Re-tokenizing their visible
+  // text can split apostrophes differently and leave a one-word translation visible.
+  const words=Array.from(new Set(Array.from(block.querySelectorAll(".er-word"), el=>el.dataset.word).filter(Boolean)));
+  const allKnown=words.length>0 && words.every(w=>!!known[w]);
+  ru.style.display=allKnown?"none":"block";
+}
+const epubTranslationQueue=[];
+let epubTranslationQueueRunning=false;
+// Reuse an in-flight translation if EPUB.js recreates the same text in another document.
+const epubTranslationInFlight = new Map();
+async function runEpubTranslationQueue(){
+  if(epubTranslationQueueRunning) return;
+  epubTranslationQueueRunning=true;
+  const worker=async()=>{
+    while(epubTranslationQueue.length){
+      const item=epubTranslationQueue.shift();
+      if(item.ru) delete item.ru.dataset.erQueued;
+      if(!item.ru || !item.ru.isConnected) continue;
+      try{
+        let request = epubTranslationInFlight.get(item.text);
+        if(!request){
+          request = translate(item.text);
+          epubTranslationInFlight.set(item.text, request);
+        }
+        let result;
+        try { result = await request; }
+        finally { if(epubTranslationInFlight.get(item.text) === request) epubTranslationInFlight.delete(item.text); }
+        if(item.ru.isConnected){
+          if(result===ER_SKIP_TRANSLATION){
+            item.ru.textContent=""; item.ru.dataset.erSkipped="1"; item.ru.classList.remove("er-pending");
+          } else if(result && result!==item.text){
+            item.ru.textContent=result; item.ru.classList.remove("er-pending"); item.ru.style.cursor=""; item.ru.onclick=null;
+          } else {
+            item.ru.textContent="Перевод недоступен — нажми, чтобы повторить"; item.ru.classList.remove("er-pending");
+            item.ru.style.cursor="pointer";
+            item.ru.onclick=()=>{if(item.ru.dataset.erQueued==="1")return;item.ru.dataset.erQueued="1";item.ru.textContent="Переводится…";item.ru.classList.add("er-pending");epubTranslationQueue.push(item);runEpubTranslationQueue();};
+          }
+          updateEpubTranslationVisibility(item.block);
+        }
+      }catch(err){
+        if(item.ru.isConnected){item.ru.textContent="Перевод недоступен — нажми, чтобы повторить";item.ru.classList.remove("er-pending");item.ru.style.cursor="pointer";item.ru.onclick=()=>{if(item.ru.dataset.erQueued==="1")return;item.ru.dataset.erQueued="1";item.ru.textContent="Переводится…";item.ru.classList.add("er-pending");epubTranslationQueue.push(item);runEpubTranslationQueue();};}
+      }
+      await sleep(80);
+    }
+  };
+  try { await Promise.all([worker(),worker(),worker(),worker()]); }
+  finally { epubTranslationQueueRunning=false; if(epubTranslationQueue.length) runEpubTranslationQueue(); }
+}
+
+function wrapEpubWords(root,doc){
+  const walker=doc.createTreeWalker(root,NodeFilter.SHOW_TEXT,{
+    acceptNode(node){
+      if(!node.nodeValue || !/[^\s]/.test(node.nodeValue)) return NodeFilter.FILTER_REJECT;
+      const p=node.parentElement;
+      if(!p || p.closest("nav,script,style,textarea,button,.er-translation,.er-word,.er-symbol-green")) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+  const nodes=[];while(walker.nextNode()) nodes.push(walker.currentNode);
+  for(const node of nodes){
+    const frag=doc.createDocumentFragment();
+    // Each letter sequence is one clickable word, including single-letter words such as "i".
+    // Punctuation is displayed separately and is never clickable or counted as a word.
+    const parts=node.nodeValue.split(/([\p{L}\p{M}]+(?:['’][\p{L}\p{M}]+)*|[^\p{L}\p{M}\s]+)/gu);
+    for(const part of parts){
+      if(!part) continue;
+      if(/^[\p{L}\p{M}]+(?:['’][\p{L}\p{M}]+)*$/u.test(part)){
+        const word=cleanWord(part);
+        if(!word){frag.appendChild(doc.createTextNode(part));continue;}
+        const span=doc.createElement("span");
+        span.className="er-word"+(known[word]?" er-known":"");
+        span.textContent=part;span.dataset.word=word;
+        span.addEventListener("click",ev=>{ev.preventDefault();ev.stopPropagation();toggleEpubWord(word,span,doc);});
+        frag.appendChild(span);
+      } else if(/[^\p{L}\p{M}\s]/u.test(part)){
+        const span=doc.createElement("span");span.className="er-symbol-green";span.textContent=part;frag.appendChild(span);
+      } else frag.appendChild(doc.createTextNode(part));
+    }
+    node.parentNode?.replaceChild(frag,node);
+  }
+}
+function toggleEpubWord(word,clicked,doc){
+  if(known[word]) delete known[word]; else known[word]=true;
+  save.known();
+  // Обновляем все вхождения во всех открытых EPUB-документах.
+  document.querySelectorAll("#epubStage iframe").forEach(frame=>{
+    try{frame.contentDocument.querySelectorAll(".er-word").forEach(el=>{if(el.dataset.word===word)el.classList.toggle("er-known",!!known[word]);});}catch(_){}
+  });
+  if(clicked) clicked.classList.toggle("er-known",!!known[word]);
+  // A word may occur several times in the same paragraph or across blocks.
+  // Recompute every block so the translation hides exactly when all its words are known.
+  document.querySelectorAll("#epubStage iframe").forEach(frame=>{
+    try{ frame.contentDocument.querySelectorAll('[data-er-translation-block="1"]').forEach(updateEpubTranslationVisibility); }catch(_){}
+  });
+  updateEpubProgress();
+}
+
+function readAsText(file){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=ev=>res(ev.target.result);
+    r.onerror=()=>rej(new Error("FileReader error"));
+    r.readAsText(file,"UTF-8");
+  });
+}
+function readAsBinary(file){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=ev=>res(ev.target.result);
+    r.onerror=()=>rej(new Error("FileReader error"));
+    r.readAsArrayBuffer(file);
+  });
+}
+async function readEpub(file){
+  if (typeof JSZip==="undefined") throw new Error("JSZip не загружен — нет интернета?");
+  const buf = await readAsBinary(file);
+  const zip = await JSZip.loadAsync(buf);
+  const containerXml = await zip.file("META-INF/container.xml").async("string");
+  const opfPath = containerXml.match(/full-path="([^"]+\.opf)"/i)?.[1];
+  if (!opfPath) throw new Error("OPF не найден в epub");
+  const opfXml  = await zip.file(opfPath).async("string");
+  const opfDir  = opfPath.includes("/") ? opfPath.slice(0,opfPath.lastIndexOf("/")+1) : "";
+  const manifest={};
+  const mRe=/<item\s[^>]*id="([^"]+)"[^>]*href="([^"]+)"[^>]*>/gi; let mm;
+  while((mm=mRe.exec(opfXml))!==null) manifest[mm[1]]=mm[2];
+  const spineIds=[]; const sRe=/<itemref\s[^>]*idref="([^"]+)"/gi; let sm;
+  while((sm=sRe.exec(opfXml))!==null) spineIds.push(sm[1]);
+  const parts=[];
+  for (const id of spineIds){
+    const href=manifest[id]; if(!href) continue;
+    const fp=opfDir+href;
+    const cf=zip.file(fp)||zip.file(href); if(!cf) continue;
+    const t=htmlToText(await cf.async("string"));
+    if(t.trim()) parts.push(t.trim());
+  }
+  if(!parts.length) throw new Error("Не удалось извлечь текст из epub");
+  return parts.join("\n\n");
+}
+function htmlToText(html){
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi,"")
+    .replace(/<style[\s\S]*?<\/style>/gi,"")
+    .replace(/<br\s*\/?>/gi,"\n")
+    .replace(/<\/p>/gi,"\n")
+    .replace(/<\/div>/gi,"\n")
+    .replace(/<\/h[1-6]>/gi,"\n\n")
+    .replace(/<[^>]+>/g,"")
+    .replace(/&nbsp;/g," ").replace(/&amp;/g,"&").replace(/&lt;/g,"<")
+    .replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'")
+    .replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"')
+    .replace(/\u2014/g," — ").replace(/\u2013/g,"–")
+    .replace(/\n{3,}/g,"\n\n").trim();
+}
+
+/* ═══════════════════════════════════════════
+   БИБЛИОТЕКА
+═══════════════════════════════════════════ */
+async function renderEpubLibrary(){
+  const el=document.getElementById("epubLibrary"); if(!el) return;
+  try{
+    const books=await epubDbRequest("readonly",store=>store.getAll());
+    if(!books.length){el.innerHTML="";return;}
+    el.innerHTML='<div class="lib-label">Мои EPUB-книги · сохраняются на этом устройстве</div>';
+    books.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)).forEach(book=>{
+      const d=document.createElement("div"); d.className="lib-item";
+      const main=document.createElement("div"); main.style.flex="1"; main.style.minWidth="0";
+      const title=document.createElement("div"); title.className="lib-title"; title.textContent=book.title||book.name;
+      const sub=document.createElement("div"); sub.className="lib-sub"; sub.textContent="EPUB · позиция и файл сохраняются";
+      main.append(title,sub); main.onclick=()=>openStoredEpub(book.id); d.append(main);
+      const del=document.createElement("button"); del.className="lib-del"; del.textContent="🗑"; del.setAttribute("aria-label","Удалить книгу");
+      del.onclick=async ev=>{ev.stopPropagation();showConfirm("Удалить сохранённую книгу с этого устройства?",async()=>{try{await epubDbRequest("readwrite",store=>store.delete(book.id));renderEpubLibrary();}catch(e){alert("Не удалось удалить книгу: "+e.message);}});};
+      d.append(del); el.append(d);
+    });
+  }catch(e){el.innerHTML='<p style="font-size:12px;color:var(--muted);margin-top:12px">Локальная библиотека EPUB недоступна в этом браузере.</p>';console.warn(e);}
+}
+async function openStoredEpub(id){
+  try{
+    const book=await epubDbRequest("readonly",store=>store.get(id));
+    if(!book) throw new Error("Книга не найдена в хранилище.");
+    const file=new File([book.data],book.name,{type:"application/epub+zip"});
+    await openEpubDirect(file,{saveCopy:false,storedId:id});
+  }catch(e){alert("Не удалось открыть сохранённую книгу: "+(e?.message||e));}
+}
+function renderLibrary(){
+  const el=document.getElementById("library");
+  if(!texts.length){el.innerHTML="";return;}
+  el.innerHTML=`<div class="lib-label">Мои тексты</div>`;
+  texts.slice().reverse().forEach(t=>{
+    const d=document.createElement("div");
+    d.className="lib-item";
+    const wc=t.raw.split(/\s+/).filter(Boolean).length;
+    d.innerHTML=`
+      <div style="flex:1" onclick="openText('${t.id}')">
+        <div class="lib-title">${esc(t.title)}</div>
+        <div class="lib-sub">${wc} слов · ${new Date(t.createdAt).toLocaleDateString("ru-RU")}</div>
+      </div>
+      <button class="lib-del" onclick="deleteText(event,'${t.id}')">🗑</button>`;
+    el.appendChild(d);
+  });
+}
+function deleteText(e,id){
+  e.stopPropagation();
+  showConfirm("Удалить текст без возможности восстановления?",()=>{
+    texts=texts.filter(t=>t.id!==id);
+    save.texts();
+    delete pos[id]; save.pos();
+    renderLibrary();
+  });
+}
+renderLibrary();
+renderEpubLibrary();
+
+/* ═══════════════════════════════════════════
+   СОЗДАНИЕ / ОТКРЫТИЕ ТЕКСТА
+═══════════════════════════════════════════ */
+document.getElementById("buildBtn").onclick = ()=>{
+  const raw=document.getElementById("inputText").value.trim();
+  if(!raw) return;
+  const title=raw.split(/\s+/).slice(0,6).join(" ")+"…";
+  const id="t"+Date.now();
+  texts.push({id,title,raw,createdAt:Date.now()});
+  save.texts();
+  document.getElementById("inputText").value="";
+  openText(id);
+};
+let currentId=null;
+function openText(id){
+  const t=texts.find(t=>t.id===id);
+  if(!t) return;
+  currentId=id;
+  ruSize=epubFontSize;
+  showView("v-reader");
+  applyFont();
+  buildReader(t.raw);
+}
+document.getElementById("delBtn").onclick = ()=>{
+  showConfirm("Удалить этот текст из памяти браузера?",()=>{
+    texts=texts.filter(t=>t.id!==currentId);
+    save.texts();
+    delete pos[currentId]; save.pos();
+    renderLibrary();
+    showView("v-home");
+  });
+};
+
+/* ═══════════════════════════════════════════
+   РАЗБИВКА НА ПРЕДЛОЖЕНИЯ
+═══════════════════════════════════════════ */
+const ABBR=/\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e|a\.m|p\.m|U\.S|U\.K)\./g;
+const MARK="\u0001";
+function splitSentences(text){
+  const p=text.replace(ABBR,m=>m.replace(".",MARK)).replace(/(\d)\.(\d)/g,(_,a,b)=>a+MARK+b);
+  return (p.match(/[^.!?]*[.!?]+(?:["'\u201D)\]]*)|[^.!?]+$/gs)||[])
+    .map(s=>s.replaceAll(MARK,"."))
+    .filter(s=>s.trim());
+}
+
+/* ═══════════════════════════════════════════
+   ТОКЕНИЗАЦИЯ
+═══════════════════════════════════════════ */
+function tokensEn(text){ return text.match(/[A-Za-z']+|[^A-Za-z']+/g)||[]; }
+function cleanWord(t){ return String(t).toLowerCase().replace(/[’‘ʼ]/g,"'").replace(/^'+|'+$/g,""); }
+// Mark obvious keyboard-smash / decorative chat strings as intentionally skipped.
+// They are cached, so unlocking the phone or reopening a chapter won't retry them.
+const ER_SKIP_TRANSLATION = "__ER_SKIP_TRANSLATION__";
+function isLikelyGibberish(text){
+  const words=String(text||"").match(/[A-Za-z]+(?:['’][A-Za-z]+)*/g)||[];
+  if(!words.length) return false;
+  const letters=words.join("").toLowerCase();
+  if(letters.length>=7 && !/[aeiouy]{1}/i.test(letters)) return true;
+  if(letters.length>=10 && (/(.)\1{3,}/i.test(letters) || /(?:asdf|qwer|zxcv|hjkl){2,}/i.test(letters))) return true;
+  // A single long, vowel-free token inside an otherwise non-prose block.
+  return words.length<=2 && letters.length>=9 && !/[aeiouy]{2}/i.test(letters);
+}
+function enWords(s){ return tokensEn(s).filter(t=>/^[A-Za-z']+$/.test(t)).map(cleanWord).filter(Boolean); }
+
+/* ═══════════════════════════════════════════
+   ПЕРЕВОД (цепочка 4 сервисов + retry)
+═══════════════════════════════════════════ */
+async function fetchT(url){
+  const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout")),9000));
+  return Promise.race([fetch(url),timeout]);
+}
+async function trGoogle(t){
+  const r=await fetchT(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ru&dt=t&q=${encodeURIComponent(t)}`);
+  if(!r.ok) throw new Error("google "+r.status);
+  const d=await r.json(); return d[0].map(x=>x[0]).join("");
+}
+async function trMyMemory(t){
+  // MyMemory limits query length. Split long passages at sentence/word boundaries
+  // and translate every part instead of silently discarding everything after 480 chars.
+  const chunks=[];
+  let rest=t.trim();
+  while(rest.length>450){
+    let cut=Math.max(rest.lastIndexOf(". ",450),rest.lastIndexOf("! ",450),rest.lastIndexOf("? ",450),rest.lastIndexOf(" ",450));
+    if(cut<180) cut=450;
+    chunks.push(rest.slice(0,cut).trim());
+    rest=rest.slice(cut).trim();
+  }
+  if(rest) chunks.push(rest);
+  const out=[];
+  for(const q of chunks){
+    const r=await fetchT(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(q)}&langpair=en|ru`);
+    if(!r.ok) throw new Error("mymemory "+r.status);
+    const d=await r.json();
+    if(!d.responseData?.translatedText) throw new Error("mymemory empty");
+    out.push(decodeHtmlEntities(d.responseData.translatedText));
+  }
+  return out.join(" ");
+}
+function decodeHtmlEntities(s){
+  const el=document.createElement("textarea"); el.innerHTML=String(s); return el.value;
+}
+async function trLingva(t,host){
+  const r=await fetchT(`https://${host}/api/v1/en/ru/${encodeURIComponent(t)}`);
+  if(!r.ok) throw new Error("lingva "+r.status);
+  const d=await r.json();
+  if(!d.translation) throw new Error("lingva empty");
+  return d.translation;
+}
+const TRANSLATORS=[
+  t=>trGoogle(t),
+  t=>trMyMemory(t),
+  t=>trLingva(t,"lingva.ml"),
+  t=>trLingva(t,"lingva.thedaviddelta.com"),
+];
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+let errShown=false;
+function showErr(msg){
+  if(errShown) return; errShown=true;
+  const b=document.createElement("div");
+  b.className="err-banner";
+  b.textContent=msg||"⚠️ Переводчик недоступен — попробуй обновить страницу.";
+  document.body.appendChild(b);
+  setTimeout(()=>{b.remove();errShown=false;},9000);
+}
+function looksLikeTranslation(source, result){
+  const src=String(source||"").trim(), out=String(result||"").trim();
+  if(!out) return false;
+  if(out===src) return !enWords(src).length;
+  // For English prose translated to Russian, a successful result should normally
+  // contain Cyrillic. This catches services that return the source unchanged.
+  const sourceHasEnglish=/[A-Za-z]{2}/.test(src);
+  const outputHasCyrillic=/[А-Яа-яЁё]/.test(out);
+  if(sourceHasEnglish && !outputHasCyrillic) return false;
+  // Reject suspiciously truncated responses for substantial passages.
+  if(src.length>180 && out.length < Math.min(35, src.length*0.12)) return false;
+  return true;
+}
+async function translate(text){
+  const trimmed=String(text||"").trim();
+  if(!trimmed||!enWords(trimmed).length){scache[text]=text;save.scache();return text;}
+  if(scache[text]===ER_SKIP_TRANSLATION) return ER_SKIP_TRANSLATION;
+  if(scache[text]!==undefined){
+    const cached=String(scache[text]??"");
+    if(looksLikeTranslation(trimmed,cached)) return cached;
+    delete scache[text];
+  }
+  if(isLikelyGibberish(trimmed)){
+    scache[text]=ER_SKIP_TRANSLATION; save.scache();
+    return ER_SKIP_TRANSLATION;
+  }
+
+  // Query providers concurrently: a stalled VPN route or broken mirror no longer
+  // blocks the other three providers for up to 9 seconds each.
+  const attempts=TRANSLATORS.map(async (provider, i)=>{
+    const ru=await provider(trimmed);
+    if(!looksLikeTranslation(trimmed,ru)) throw new Error("returned source/untranslated text");
+    return {ru, i};
+  });
+  try{
+    const winner=await Promise.any(attempts);
+    scache[text]=winner.ru; save.scache();
+    return winner.ru;
+  }catch(err){
+    console.warn("Все источники перевода недоступны:", err);
+    showErr("⚠️ Переводчики не ответили. Проверь интернет/VPN и нажми на строку перевода для повтора.");
+    return text; // Не кешируем ошибку: повторная попытка снова проверит все сервисы.
+  }
+}
+
+/* ═══════════════════════════════════════════
+   РИДЕР
+═══════════════════════════════════════════ */
+let sentences=[];
+function buildReader(raw){
+  sentences=splitSentences(raw).map(s=>({raw:s,words:enWords(s)}));
+  renderReader();
+  hydrate().then(()=>restoreScrollPos());
+}
+function renderReader(){
+  const card=document.getElementById("readingCard");
+  let html="",total=0,knownCount=0;
+  sentences.forEach((sent,si)=>{
+    const ws=sent.words;
+    total+=ws.length;
+    const kn=ws.filter(w=>known[w]).length;
+    knownCount+=kn;
+    const full=ws.length>0&&kn===ws.length;
+    const ru=scache[sent.raw];
+    const ruLine=ru===ER_SKIP_TRANSLATION
+      ? ``
+      : ru!==undefined
+      ? `<div class="ru-line">${esc(ru)}</div>`
+      : `<div class="ru-line" style="color:var(--muted);font-style:italic;font-size:13px">переводится…</div>`;
+    const enTokens=tokensEn(sent.raw);
+    let enHtml="";
+    enTokens.forEach(tok=>{
+      if(!/^[A-Za-z']+$/.test(tok)){enHtml+=esc(tok);return;}
+      const w=cleanWord(tok);
+      const isK=!!known[w];
+      enHtml+=`<span class="ew${isK?" known":""}" onclick="toggleWord('${w.replace(/'/g,"\\'")}')">${esc(tok)}</span>`;
+    });
+    html+=`<div class="sent-block${full?" fully-known":""}" data-si="${si}">${full?"":ruLine}<div class="en-line">${enHtml}</div></div>`;
+  });
+  card.innerHTML=html;
+  updateProgress(total,knownCount);
+}
+function updateProgress(total,kn){
+  const pct=total?Math.round(kn/total*100):0;
+  document.getElementById("progFill").style.width=pct+"%";
+  document.getElementById("progTxt").textContent=pct+"% слов известно";
+  document.getElementById("progCount").textContent=`${kn} / ${total}`;
+}
+async function hydrate(){
+  const todo=sentences.filter(s=>scache[s.raw]===undefined&&s.words.length>0);
+  const BATCH=5;
+  for(let i=0;i<todo.length;i+=BATCH){
+    await Promise.all(todo.slice(i,i+BATCH).map(s=>translate(s.raw)));
+    renderReader();
+  }
+}
+
+/* ═══════════════════════════════════════════
+   КЛИК ПО СЛОВУ
+═══════════════════════════════════════════ */
+function toggleWord(word){
+  if(known[word]) delete known[word]; else known[word]=true;
+  save.known();
+  renderReader();
+}
+
+/* ═══════════════════════════════════════════
+   СЛОВАРЬ — экспорт / импорт
+═══════════════════════════════════════════ */
+function renderWords(){
+  const list=Object.keys(known).sort();
+  document.getElementById("wordsCount").textContent=list.length+" слов известно";
+  const c=document.getElementById("wordsList");
+  if(!list.length){
+    c.innerHTML=`<p style="color:var(--muted);font-size:14px">Пока нет — кликай на английские слова во время чтения.</p>`;
+    return;
+  }
+  c.innerHTML=list.map(w=>
+    `<span class="word-chip">${esc(w)}<button onclick="forgetWord('${w.replace(/'/g,"\\'")}')">✕</button></span>`
+  ).join("");
+}
+function forgetWord(w){
+  delete known[w]; save.known(); renderWords();
+  if(document.getElementById("v-reader").classList.contains("active")) renderReader();
+}
+
+// Экспорт
+document.getElementById("exportBtn").onclick = ()=>{
+  const data=JSON.stringify({version:1,words:Object.keys(known)},null,2);
+  const a=document.createElement("a");
+  a.href="data:application/json;charset=utf-8,"+encodeURIComponent(data);
+  a.download="english-reader-dictionary.json";
+  a.click();
+};
+
+// Импорт
+document.getElementById("importBtn").onclick = ()=>document.getElementById("importInput").click();
+document.getElementById("importInput").onchange = async e=>{
+  const file=e.target.files[0]; if(!file) return;
+  try{
+    const text=await readAsText(file);
+    const data=JSON.parse(text);
+    const words=Array.isArray(data.words)?data.words:Object.keys(data);
+    let added=0;
+    words.forEach(w=>{ if(typeof w==="string"&&!known[w]){known[w]=true;added++;} });
+    save.known(); renderWords();
+    alert(`Добавлено ${added} новых слов. Итого: ${Object.keys(known).length}`);
+  }catch(err){ alert("Ошибка импорта: "+err.message); }
+  e.target.value="";
+};
+
+/* ═══════════════════════════════════════════
+   МОДАЛКА ПОДТВЕРЖДЕНИЯ
+═══════════════════════════════════════════ */
+function showConfirm(msg,onOk){
+  const ov=document.createElement("div");
+  ov.className="modal-overlay";
+  ov.innerHTML=`<div class="modal-box"><p>${esc(msg)}</p><div class="modal-row">
+    <button class="btn btn-secondary" style="flex:1" id="_mC">Отмена</button>
+    <button class="btn" style="flex:1;background:#c0392b;color:#fff" id="_mO">Удалить</button>
+  </div></div>`;
+  document.body.appendChild(ov);
+  ov.querySelector("#_mC").onclick=()=>ov.remove();
+  ov.querySelector("#_mO").onclick=()=>{ov.remove();onOk();};
+}
+</script>
+
+<script>
+// Keep the EPUB reading viewport at a stable height while Chrome's browser bars
+// expand/collapse. This prevents EPUB.js from recalculating the current CFI into
+// a different location during an ordinary chapter-reading session.
+(()=>{
+  const stage=document.getElementById('epubStage');
+  if(!stage || !window.ResizeObserver) return;
+  let lockedHeight=0;
+  const ro=new ResizeObserver(entries=>{
+    for(const entry of entries){
+      if(!document.getElementById('v-epub')?.classList.contains('active')) continue;
+      if(stage.classList.contains('epub-whole-mode')) continue;
+      const h=Math.round(entry.contentRect.height);
+      if(h>200 && !stage.style.height){
+        lockedHeight=h;
+        stage.style.height=lockedHeight+'px';
+      }
+    }
+  });
+  ro.observe(stage);
+})();
+</script>
+
+</body>
+</html>
